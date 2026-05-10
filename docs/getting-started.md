@@ -14,7 +14,7 @@ This is closer to FaceFusion than to a separate desktop app: setup happens once,
 Use this when the machine has a local GPU, especially a Windows or Linux NVIDIA setup.
 
 ```bash
-git clone https://github.com/YOUR_NAME/wan-studio.git
+git clone https://github.com/jjj06960-hash/wan-studio.git
 cd wan-studio
 python install.py --accelerator cuda
 python wan_studio.py run --open-browser
@@ -69,7 +69,7 @@ Use this when the local machine has no suitable GPU.
 In Colab:
 
 ```python
-!git clone https://github.com/YOUR_NAME/wan-studio.git /content/wan-studio
+!git clone https://github.com/jjj06960-hash/wan-studio.git /content/wan-studio
 %cd /content/wan-studio
 !python install.py --accelerator cuda --system
 ```
