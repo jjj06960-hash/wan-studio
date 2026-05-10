@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import json
 import shutil
+import textwrap
 from pathlib import Path
 from typing import Awaitable, Callable, Protocol
 
@@ -90,6 +91,42 @@ class SubprocessWanRunner:
         return status_for(request.id, JobState.SUCCEEDED, 100, output_path=output_path)
 
 
+class LightX2VRunner:
+    """Runs the LightX2V low-VRAM Wan backend for 8/16/24 GB presets."""
+
+    async def run(self, request: GenerationRequest, output_dir: Path, progress: ProgressCallback | None = None) -> GenerationStatus:
+        if not request.model_path:
+            return status_for(request.id, JobState.FAILED, 0, error="Model path is required for the LightX2V runner")
+        if request.task.value == "i2v" and not request.image:
+            return status_for(request.id, JobState.FAILED, 0, error="I2V generation requires an image reference path")
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{request.id}.mp4"
+        command = build_lightx2v_command(request, save_file=output_path)
+        if progress:
+            await progress(status_for(request.id, JobState.RUNNING, 5))
+
+        process = await asyncio.create_subprocess_exec(
+            *command,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.STDOUT,
+        )
+        output_lines: list[str] = []
+        if process.stdout:
+            while True:
+                line = await process.stdout.readline()
+                if not line:
+                    break
+                output_lines.append(line.decode("utf-8", errors="replace").rstrip())
+        return_code = await process.wait()
+        (output_dir / f"{request.id}.log").write_text("\n".join(output_lines), encoding="utf-8")
+        if return_code != 0:
+            return status_for(request.id, JobState.FAILED, 0, error="\n".join(output_lines[-40:]) or f"LightX2V exited with {return_code}")
+        if not output_path.exists():
+            return status_for(request.id, JobState.FAILED, 0, error="LightX2V finished but no MP4 output was found")
+        return status_for(request.id, JobState.SUCCEEDED, 100, output_path=output_path)
+
+
 def build_wan_generate_command(request: GenerationRequest, wan_repo_dir: Path, *, save_file: Path | None = None) -> list[str]:
     """Builds the official Wan generate.py command shape without executing it."""
     generate_args = [
@@ -132,6 +169,67 @@ def build_wan_generate_command(request: GenerationRequest, wan_repo_dir: Path, *
         return command
 
     return ["python", str(wan_repo_dir / "generate.py"), *generate_args]
+
+
+def build_lightx2v_command(request: GenerationRequest, *, save_file: Path) -> list[str]:
+    """Builds a LightX2V script command for the low-VRAM 8/16/24 GB presets."""
+    width, height = parse_size(request.size)
+    data = {
+        "model_path": request.model_path,
+        "task": request.task.value,
+        "prompt": request.prompt,
+        "image": request.image,
+        "save_file": str(save_file),
+        "steps": request.steps,
+        "width": width,
+        "height": height,
+        "seed": request.seed,
+        "vram_tier_gb": int(request.vram_tier_gb),
+    }
+    payload = json.dumps(data)
+    script = textwrap.dedent(
+        f"""
+        import json
+        data = json.loads({payload!r})
+        from lightx2v import LightX2VPipeline
+
+        pipe = LightX2VPipeline(
+            model_path=data["model_path"],
+            model_cls="wan2.2_moe",
+            task=data["task"],
+        )
+        pipe.enable_offload(
+            cpu_offload=True,
+            offload_granularity="block" if data["vram_tier_gb"] <= 16 else "phase",
+            text_encoder_offload=True,
+            image_encoder_offload=data["vram_tier_gb"] <= 8,
+            vae_offload=data["vram_tier_gb"] <= 16,
+        )
+        pipe.create_generator(
+            attn_mode="sage_attn2",
+            infer_steps=data["steps"],
+            height=data["height"],
+            width=data["width"],
+            num_frames=81,
+            guidance_scale=[3.5, 3.5],
+            sample_shift=5.0,
+        )
+        pipe.generate(
+            seed=data["seed"],
+            image_path=data["image"],
+            prompt=data["prompt"],
+            negative_prompt="overexposed, low quality, blurry, distorted, bad anatomy, watermark, text",
+            save_result_path=data["save_file"],
+        )
+        """
+    ).strip()
+    return ["python", "-c", script]
+
+
+def parse_size(value: str) -> tuple[int, int]:
+    normalized = value.lower().replace("*", "x")
+    width, height = normalized.split("x", 1)
+    return int(width), int(height)
 
 
 def wan_task_name(request: GenerationRequest) -> str:

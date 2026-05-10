@@ -1,4 +1,4 @@
-import type { ModelCapabilities, ModelInstall, PresetSettings, WanTask } from "./types";
+import type { ModelCapabilities, ModelInstall, PresetSettings, VramTierGb, WanTask } from "./types";
 
 export const WAN_TASK_LABELS: Record<WanTask, string> = {
   t2v: "Text to video",
@@ -9,28 +9,56 @@ export const WAN_TASK_LABELS: Record<WanTask, string> = {
 };
 
 export const RECOMMENDED_WAN_MODEL: ModelInstall = {
-  modelId: "wan2.2-loraset-nsfw",
-  displayName: "WAN2.2 LoRA Set",
+  modelId: "wan2.2-i2v-a14b",
+  displayName: "Wan2.2 I2V A14B",
   family: "wan",
-  task: "multi",
+  task: "i2v",
   localPath: "",
   source: "huggingface",
   status: "recommended",
-  repoId: "lkzd7/WAN2.2_LoraSet_NSFW",
+  repoId: "Wan-AI/Wan2.2-I2V-A14B",
   capabilities: {
-    tasks: ["i2v", "ti2v"],
-    optimized: false,
+    tasks: ["i2v"],
+    optimized: true,
+    minVramGb: 8,
     notes: [
-      "Default Wan2.2 LoRA/adapters download target",
-      "Requires a compatible Wan2.2 base model runner for real inference",
-      "Use as an add-on model folder, not as a standalone base checkpoint",
+      "Default A14B quality base for Wan2.2 I2V workflows",
+      "Use 8GB, 16GB, or 24GB optimized builds from the Studio UI",
+      "Requires an image reference for generation",
     ],
+  },
+};
+
+export const DEFAULT_VRAM_TIER_GB: VramTierGb = 8;
+
+export const VRAM_TIER_PRESETS: Record<VramTierGb, PresetSettings> = {
+  8: {
+    size: "832x480",
+    steps: 4,
+    vramTierGb: 8,
+    offloadModel: true,
+    t5Cpu: true,
+  },
+  16: {
+    size: "960x544",
+    steps: 4,
+    vramTierGb: 16,
+    offloadModel: true,
+    t5Cpu: true,
+  },
+  24: {
+    size: "1280x720",
+    steps: 4,
+    vramTierGb: 24,
+    offloadModel: true,
+    t5Cpu: true,
   },
 };
 
 export const OPTIMIZED_WAN_5B_PRESET: PresetSettings = {
   size: "1280x704",
   steps: 24,
+  vramTierGb: 24,
   offloadModel: true,
   t5Cpu: true,
 };
@@ -38,11 +66,12 @@ export const OPTIMIZED_WAN_5B_PRESET: PresetSettings = {
 export const SAFE_CUSTOM_WAN_PRESET: PresetSettings = {
   size: "832x480",
   steps: 18,
+  vramTierGb: 8,
   offloadModel: true,
   t5Cpu: true,
 };
 
-const WEIGHT_FILE_PATTERN = /\.(safetensors|bin|pt|pth|ckpt)$/i;
+const WEIGHT_FILE_PATTERN = /\.(safetensors|bin|pt|pth|ckpt|gguf)$/i;
 
 export function buildHuggingFaceCommand(repoId: string, targetPath: string): string {
   const safeRepo = repoId.trim() || "<repo-id>";
@@ -84,15 +113,27 @@ export function inferWanCapabilities(input: string): ModelCapabilities {
     notes.push("Wan model detected; defaulting to text-to-video until verified");
   }
 
-  const optimized = normalized.includes("wan2.2") && normalized.includes("ti2v") && normalized.includes("5b");
-  if (optimized) {
+  const lowVramSignal = ["gguf", "lightx2v", "fp8", "int8", "q2_", "q3_", "q4_", "q5_", "q6_", "q8_"].some((token) =>
+    normalized.includes(token),
+  );
+  const optimized5b = normalized.includes("wan2.2") && normalized.includes("ti2v") && normalized.includes("5b");
+  const optimizedA14b = normalized.includes("wan2.2") && normalized.includes("a14b") && (normalized.includes("i2v") || normalized.includes("t2v"));
+  const optimizedLowVram = optimizedA14b && lowVramSignal;
+  const optimized = optimized5b || optimizedA14b;
+  if (optimized5b) {
     notes.push("Matches the Wan2.2 TI2V 5B optimized profile");
+  }
+  if (optimizedLowVram) {
+    notes.push("Matches the Wan2.2 A14B low-VRAM optimized profile");
+  }
+  if (optimizedA14b) {
+    notes.push("Matches the Wan2.2 A14B quality workflow profile");
   }
 
   return {
     tasks: Array.from(tasks),
     optimized,
-    minVramGb: optimized ? 24 : undefined,
+    minVramGb: optimizedLowVram ? 8 : optimizedA14b ? 80 : optimized5b ? 24 : undefined,
     notes,
   };
 }
@@ -153,6 +194,13 @@ export function createCustomModel(input: {
   };
 }
 
-export function getPresetForModel(model: ModelInstall): PresetSettings {
+export function getPresetForVramTier(vramTierGb: VramTierGb = DEFAULT_VRAM_TIER_GB): PresetSettings {
+  return VRAM_TIER_PRESETS[vramTierGb] ?? VRAM_TIER_PRESETS[DEFAULT_VRAM_TIER_GB];
+}
+
+export function getPresetForModel(model: ModelInstall, vramTierGb: VramTierGb = DEFAULT_VRAM_TIER_GB): PresetSettings {
+  if (model.capabilities.tasks.includes("i2v") || model.capabilities.minVramGb === 8) {
+    return getPresetForVramTier(vramTierGb);
+  }
   return model.capabilities.optimized ? OPTIMIZED_WAN_5B_PRESET : SAFE_CUSTOM_WAN_PRESET;
 }

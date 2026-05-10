@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from enum import StrEnum
+from enum import IntEnum, StrEnum
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -29,6 +29,12 @@ class WanTask(StrEnum):
 class RuntimeKind(StrEnum):
     LOCAL = "local"
     COLAB_DRIVE = "colab-drive"
+
+
+class VramTier(IntEnum):
+    GB8 = 8
+    GB16 = 16
+    GB24 = 24
 
 
 class JobState(StrEnum):
@@ -67,7 +73,8 @@ class GenerationRequest(WanBaseModel):
     model_path: str = ""
     size: str = "832x480"
     seed: int = 0
-    steps: int = 18
+    steps: int = 4
+    vram_tier_gb: VramTier = VramTier.GB8
     offload_model: bool = True
     t5_cpu: bool = True
     lora_paths: list[str] = Field(default_factory=list)

@@ -1,4 +1,4 @@
-import type { GenerationJob, GenerationRequest, GenerationStatus, ModelInstall, RuntimeKind, WanTask } from "./types";
+import type { GenerationJob, GenerationRequest, GenerationStatus, ModelInstall, RuntimeKind, VramTierGb, WanTask } from "./types";
 import { getPresetForModel } from "./modelCatalog";
 
 export function makeJob(input: {
@@ -7,9 +7,10 @@ export function makeJob(input: {
   model: ModelInstall;
   runtime: RuntimeKind;
   task: WanTask;
+  vramTierGb?: VramTierGb;
 }): GenerationJob {
   const id = crypto.randomUUID();
-  const preset = getPresetForModel(input.model);
+  const preset = getPresetForModel(input.model, input.vramTierGb);
   const request: GenerationRequest = {
     id,
     prompt: input.prompt,
@@ -21,6 +22,7 @@ export function makeJob(input: {
     seed: Math.floor(Math.random() * 2_147_483_647),
     size: preset.size,
     steps: preset.steps,
+    vramTierGb: preset.vramTierGb,
     offloadModel: preset.offloadModel,
     t5Cpu: preset.t5Cpu,
     createdAt: new Date().toISOString(),

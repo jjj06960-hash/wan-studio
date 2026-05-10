@@ -4,13 +4,17 @@ Wan Studio should feel like a packaged product, not a blank ComfyUI canvas. The 
 
 ## Embedded Now
 
-### Fast 5B Starter
+### A14B I2V Consumer Builds
 
-- Base model: `Wan-AI/Wan2.2-TI2V-5B`
-- Task: `ti2v-5B`
-- Use when: user wants the fastest official Wan2.2 path on a 24 GB class GPU
-- Defaults: `1280x704`, 24 steps, model offload enabled, T5 on CPU
-- LoRA: only compatible 5B/TI2V LoRAs should be attached
+- Base model: `Wan-AI/Wan2.2-I2V-A14B`
+- Optimized assets: `lightx2v/Wan2.2-Distill-Models`
+- Task: `i2v-A14B`
+- User control: only choose `8GB`, `16GB`, or `24GB`
+- Preset mapping:
+  - `8GB`: `832x480`, 4 steps, heavy offload
+  - `16GB`: `960x544`, 4 steps, balanced offload
+  - `24GB`: `1280x720`, 4 steps, quality-oriented consumer GPU build
+- Runner: LightX2V low-VRAM bridge
 
 ### A14B I2V LoRA Quality
 
@@ -20,6 +24,14 @@ Wan Studio should feel like a packaged product, not a blank ComfyUI canvas. The 
 - Use when: the adapter folder contains Wan2.2 I2V A14B LoRAs, such as the current default adapter set
 - UX rule: if the selected base is `Wan2.2-TI2V-5B`, the app disables these LoRA presets and recommends `Wan-AI/Wan2.2-I2V-A14B`
 
+### Fast 5B Starter
+
+- Base model: `Wan-AI/Wan2.2-TI2V-5B`
+- Task: `ti2v-5B`
+- Use when: user wants a lower-load official Wan2.2 path without the default A14B LoRA set
+- Defaults: `1280x704`, 24 steps, model offload enabled, T5 on CPU
+- LoRA: only compatible 5B/TI2V LoRAs should be attached
+
 ## Research Backlog
 
 ### A14B T2V LoRA Quality
@@ -28,16 +40,11 @@ Wan Studio should feel like a packaged product, not a blank ComfyUI canvas. The 
 - Task: `t2v-A14B`
 - Adapter behavior: same LOW/HIGH pairing as I2V, but only for T2V-labeled LoRA files
 
-### Lightning / LightX2V Fast A14B
-
-- Goal: embed a 4-step A14B preset for much faster generation
-- Pattern found in community workflows: use paired HIGH/LOW Lightning or LightX2V LoRAs and reduce sampling steps
-- Runner gap: the current official `generate.py` bridge can launch A14B tasks, but more tuning is needed before Wan Studio should advertise this as a one-click preset
-
 ### Low-VRAM A14B
 
 - Goal: hide FP8/GGUF/offload complexity behind a "quality on lower VRAM" preset
-- Runner gap: GGUF and some FP8 community workflows are ComfyUI-wrapper-specific today, so Wan Studio needs a non-Comfy backend path before embedding them
+- Status: LightX2V 8GB/16GB/24GB runner bridge is embedded
+- Next runner gap: GGUF community workflows are often ComfyUI-wrapper-specific today, so Wan Studio needs a stable non-Comfy GGUF path before embedding them as another build option
 
 ## Source Notes
 

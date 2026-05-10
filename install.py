@@ -51,6 +51,8 @@ def main() -> None:
     print()
     print("Run the Web UI:")
     print(f"  {python} {ROOT / 'wan_studio.py'} run --open-browser")
+    print("Run the low-VRAM 8GB/16GB/24GB backend after installing LightX2V:")
+    print(f"  {python} {ROOT / 'wan_studio.py'} run --runner lightx2v --open-browser")
 
 
 if __name__ == "__main__":

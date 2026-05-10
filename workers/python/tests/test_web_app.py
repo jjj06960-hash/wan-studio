@@ -11,6 +11,10 @@ def test_state_exposes_default_lora_folder(tmp_path: Path) -> None:
 
     payload = client.get("/api/state").json()
 
+    assert payload["defaultRepoId"] == "Wan-AI/Wan2.2-I2V-A14B"
+    assert payload["defaultModelDir"] == "models/Wan2.2-I2V-A14B"
+    assert payload["wanBaseRepoId"] == "Wan-AI/Wan2.2-I2V-A14B"
+    assert payload["wanBaseModelDir"].endswith("models/Wan2.2-I2V-A14B")
     assert payload["defaultLoraRepoId"] == "lkzd7/WAN2.2_LoraSet_NSFW"
     assert payload["defaultLoraModelDir"].endswith("models/WAN2.2_LoraSet_NSFW")
 
@@ -69,3 +73,53 @@ def test_create_job_rejects_incompatible_lora_before_queueing(tmp_path: Path) ->
 
     assert response.status_code == 400
     assert "Wan-AI/Wan2.2-I2V-A14B" in response.text
+
+
+def test_create_job_rejects_i2v_without_reference_image(tmp_path: Path) -> None:
+    model_dir = tmp_path / "Wan2.2-I2V-A14B"
+    write_model_config(model_dir, dim=5120, model_type="i2v", subfolder="low_noise_model")
+    (model_dir / "high_noise_model").mkdir()
+    (model_dir / "high_noise_model" / "config.json").write_text('{"dim":5120,"model_type":"i2v"}', encoding="utf-8")
+    (model_dir / "low_noise_model" / "diffusion_pytorch_model.safetensors").write_bytes(b"fake")
+    client = TestClient(create_app(root=tmp_path, runner_kind="fake"))
+    model = client.post(
+        "/api/models/connect",
+        json={"repo_id": "Wan-AI/Wan2.2-I2V-A14B", "local_path": str(model_dir), "source": "huggingface"},
+    ).json()["model"]
+
+    response = client.post(
+        "/api/jobs",
+        json={
+            "prompt": "test",
+            "model_id": model["modelId"],
+            "task": "i2v",
+        },
+    )
+
+    assert response.status_code == 400
+    assert "image reference" in response.text
+
+
+def test_official_runner_rejects_low_vram_profile(tmp_path: Path) -> None:
+    model_dir = tmp_path / "Wan2.2-I2V-A14B"
+    write_model_config(model_dir, dim=5120, model_type="i2v", subfolder="low_noise_model")
+    (model_dir / "low_noise_model" / "diffusion_pytorch_model.safetensors").write_bytes(b"fake")
+    client = TestClient(create_app(root=tmp_path, runner_kind="wan", wan_repo_dir=tmp_path))
+    model = client.post(
+        "/api/models/connect",
+        json={"repo_id": "Wan-AI/Wan2.2-I2V-A14B", "local_path": str(model_dir), "source": "huggingface"},
+    ).json()["model"]
+
+    response = client.post(
+        "/api/jobs",
+        json={
+            "prompt": "test",
+            "model_id": model["modelId"],
+            "task": "i2v",
+            "image": "/tmp/input.png",
+            "vram_tier_gb": 8,
+        },
+    )
+
+    assert response.status_code == 400
+    assert "LightX2V" in response.text

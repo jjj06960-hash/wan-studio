@@ -3,8 +3,8 @@ import json
 from pathlib import Path
 
 from wan_studio_worker.drive_worker import ensure_drive_tree, process_once
-from wan_studio_worker.runner import FakeWanRunner, build_wan_generate_command
-from wan_studio_worker.schemas import DriveJobEnvelope, GenerationRequest, JobState, RuntimeKind, WanTask
+from wan_studio_worker.runner import FakeWanRunner, build_lightx2v_command, build_wan_generate_command
+from wan_studio_worker.schemas import DriveJobEnvelope, GenerationRequest, JobState, RuntimeKind, VramTier, WanTask
 
 
 def test_fake_runner_writes_output(tmp_path: Path) -> None:
@@ -64,6 +64,30 @@ def test_build_wan_command_with_lora_uses_loader_wrapper() -> None:
     assert "i2v-A14B" in command
     assert "--save_file" in command
     assert "/outputs/test.mp4" in command
+
+
+def test_build_lightx2v_command_shape_for_low_vram_i2v() -> None:
+    request = GenerationRequest(
+        prompt="A guitar player smiles",
+        image="/tmp/reference.png",
+        model_id="wan2.2-i2v-a14b",
+        model_path="/models/Wan2.2-I2V-A14B",
+        size="832x480",
+        steps=4,
+        task=WanTask.I2V,
+        vram_tier_gb=VramTier.GB8,
+    )
+
+    command = build_lightx2v_command(request, save_file=Path("/outputs/test.mp4"))
+
+    assert command[:2] == ["python", "-c"]
+    script = command[2]
+    assert "LightX2VPipeline" in script
+    assert '"model_path": "/models/Wan2.2-I2V-A14B"' in script
+    assert '"steps": 4' in script
+    assert '"width": 832' in script
+    assert '"height": 480' in script
+    assert 'save_result_path=data["save_file"]' in script
 
 
 def test_drive_worker_processes_camel_case_job(tmp_path: Path) -> None:

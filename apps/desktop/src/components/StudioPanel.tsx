@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Cloud, Image, Play, Send, SlidersHorizontal } from "lucide-react";
 import { makeJob, serializeDriveJob } from "../lib/jobs";
-import { WAN_TASK_LABELS } from "../lib/modelCatalog";
-import type { ColabDriveStatus, GenerationJob, ModelInstall, RuntimeKind, WanTask } from "../lib/types";
+import { DEFAULT_VRAM_TIER_GB, VRAM_TIER_PRESETS, WAN_TASK_LABELS } from "../lib/modelCatalog";
+import type { ColabDriveStatus, GenerationJob, ModelInstall, RuntimeKind, VramTierGb, WanTask } from "../lib/types";
 
 interface StudioPanelProps {
   models: ModelInstall[];
@@ -20,7 +20,9 @@ export function StudioPanel({ models, runtime, jobs, colabDrive, onCreateJob }: 
   const selectedModel = useMemo(() => models.find((model) => model.modelId === modelId) ?? preferredModel, [modelId, models, preferredModel]);
   const availableTasks = selectedModel?.capabilities.tasks ?? [];
   const [task, setTask] = useState<WanTask>("ti2v");
+  const [vramTierGb, setVramTierGb] = useState<VramTierGb>(DEFAULT_VRAM_TIER_GB);
   const resolvedTask = availableTasks.includes(task) ? task : availableTasks[0] ?? "t2v";
+  const preset = VRAM_TIER_PRESETS[vramTierGb];
   const latestJob = jobs[0];
   const canSubmit =
     Boolean(selectedModel && prompt.trim()) && (runtime === "local" || (colabDrive.readyToPrompt && Boolean(selectedModel?.localPath)));
@@ -42,6 +44,7 @@ export function StudioPanel({ models, runtime, jobs, colabDrive, onCreateJob }: 
       model: selectedModel,
       runtime,
       task: resolvedTask,
+      vramTierGb,
     });
     onCreateJob(job);
   }
@@ -102,10 +105,17 @@ export function StudioPanel({ models, runtime, jobs, colabDrive, onCreateJob }: 
         <section className="panel">
           <div className="section-heading">
             <div>
-              <h2>Settings</h2>
-              <p>{runtime === "local" ? "Local worker request" : "Drive job request"}</p>
+              <h2>VRAM</h2>
+              <p>Pick the GPU memory you want Wan Studio to target.</p>
             </div>
             <SlidersHorizontal size={18} />
+          </div>
+          <div className="task-row">
+            {([8, 16, 24] as VramTierGb[]).map((tier) => (
+              <button key={tier} type="button" className={vramTierGb === tier ? "task-button active" : "task-button"} onClick={() => setVramTierGb(tier)}>
+                {tier}GB
+              </button>
+            ))}
           </div>
           <div className="settings-list">
             <div>
@@ -117,8 +127,8 @@ export function StudioPanel({ models, runtime, jobs, colabDrive, onCreateJob }: 
               <strong>{resolvedTask.toUpperCase()}</strong>
             </div>
             <div>
-              <span>Preset</span>
-              <strong>{selectedModel?.capabilities.optimized ? "24 GB" : "Safe"}</strong>
+              <span>Build</span>
+              <strong>{preset.size} · {preset.steps} steps</strong>
             </div>
             {runtime === "colab-drive" && (
               <div>

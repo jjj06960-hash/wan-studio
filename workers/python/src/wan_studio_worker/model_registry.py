@@ -6,7 +6,7 @@ import re
 
 from .schemas import ModelCapabilities, ModelInstall, WanTask
 
-WEIGHT_SUFFIXES = {".safetensors", ".bin", ".pt", ".pth", ".ckpt"}
+WEIGHT_SUFFIXES = {".safetensors", ".bin", ".pt", ".pth", ".ckpt", ".gguf"}
 
 
 @dataclass(frozen=True)
@@ -52,11 +52,20 @@ def infer_capabilities(value: str) -> ModelCapabilities:
     if "lora" in normalized or "adapter" in normalized:
         notes.append("LoRA/adapters detected; pair with a compatible Wan base model for real inference")
 
-    optimized = "wan2.2" in normalized and "ti2v" in normalized and "5b" in normalized
-    if optimized:
+    low_vram_signal = any(token in normalized for token in ("gguf", "lightx2v", "fp8", "int8", "q2_", "q3_", "q4_", "q5_", "q6_", "q8_"))
+    optimized_5b = "wan2.2" in normalized and "ti2v" in normalized and "5b" in normalized
+    optimized_a14b = "wan2.2" in normalized and "a14b" in normalized and ("i2v" in normalized or "t2v" in normalized)
+    optimized_low_vram = optimized_a14b and low_vram_signal
+    optimized = optimized_5b or optimized_a14b
+    if optimized_5b:
         notes.append("Matches the Wan2.2 TI2V 5B optimized profile")
+    if optimized_low_vram:
+        notes.append("Matches the Wan2.2 A14B low-VRAM optimized profile")
+    if optimized_a14b:
+        notes.append("Matches the Wan2.2 A14B quality workflow profile")
 
-    return ModelCapabilities(tasks=tasks, optimized=optimized, min_vram_gb=24 if optimized else None, notes=notes)
+    min_vram = 8 if optimized_low_vram else (80 if optimized_a14b else (24 if optimized_5b else None))
+    return ModelCapabilities(tasks=tasks, optimized=optimized, min_vram_gb=min_vram, notes=notes)
 
 
 def inspect_model_folder(path: str, *, max_files: int = 80) -> ModelInspection:

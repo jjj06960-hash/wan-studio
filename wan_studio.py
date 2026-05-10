@@ -27,7 +27,7 @@ def main() -> None:
     run_parser.add_argument("--root", default=".", help="Workspace root for config, models, and outputs")
     run_parser.add_argument("--open-browser", action="store_true")
     run_parser.add_argument("--share", action="store_true", help="Expose the port in Google Colab when available")
-    run_parser.add_argument("--runner", choices=["fake", "wan"], default="fake")
+    run_parser.add_argument("--runner", choices=["fake", "wan", "lightx2v"], default="fake")
     run_parser.add_argument("--wan-repo-dir", default="", help="Path to the official Wan2.2 repository when --runner wan is used")
 
     args = parser.parse_args()

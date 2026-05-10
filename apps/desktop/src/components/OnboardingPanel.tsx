@@ -33,8 +33,8 @@ interface OnboardingPanelProps {
 export function OnboardingPanel({ runtime, models, onRuntimeChange, onModelsChange, onComplete }: OnboardingPanelProps) {
   const [setupPage, setSetupPage] = useState<"choose" | "colab" | "local">("choose");
   const [source, setSource] = useState<ModelSource>("huggingface");
-  const [repoId, setRepoId] = useState(RECOMMENDED_WAN_MODEL.repoId ?? "lkzd7/WAN2.2_LoraSet_NSFW");
-  const [targetPath, setTargetPath] = useState("./models/WAN2.2_LoraSet_NSFW");
+  const [repoId, setRepoId] = useState(RECOMMENDED_WAN_MODEL.repoId ?? "Wan-AI/Wan2.2-I2V-A14B");
+  const [targetPath, setTargetPath] = useState("./models/Wan2.2-I2V-A14B");
   const [localPath, setLocalPath] = useState("");
   const [copied, setCopied] = useState(false);
   const [addedModelId, setAddedModelId] = useState<string | null>(null);
@@ -69,8 +69,8 @@ export function OnboardingPanel({ runtime, models, onRuntimeChange, onModelsChan
 
   function chooseRuntime(nextRuntime: RuntimeKind) {
     onRuntimeChange(nextRuntime);
-    setTargetPath(nextRuntime === "colab-drive" ? "/content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW" : "./models/WAN2.2_LoraSet_NSFW");
-    setLocalPath(nextRuntime === "colab-drive" ? "/content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW" : "");
+    setTargetPath(nextRuntime === "colab-drive" ? "/content/drive/MyDrive/WanStudio/models/Wan2.2-I2V-A14B" : "./models/Wan2.2-I2V-A14B");
+    setLocalPath(nextRuntime === "colab-drive" ? "/content/drive/MyDrive/WanStudio/models/Wan2.2-I2V-A14B" : "");
     setSetupPage(nextRuntime === "colab-drive" ? "colab" : "local");
   }
 
@@ -145,7 +145,7 @@ export function OnboardingPanel({ runtime, models, onRuntimeChange, onModelsChan
             <ol className="guide-list">
               <li>
                 <strong>Choose payment</strong>
-                <span>For a connection test, free Colab is enough. For real Wan video generation, use Colab Pro, Pro+, or Pay As You Go and choose a GPU runtime.</span>
+                <span>For a connection test, free Colab is enough. For real Wan video generation, choose a GPU runtime and start with the 8GB build.</span>
               </li>
               <li>
                 <strong>Open Colab</strong>
@@ -157,7 +157,7 @@ export function OnboardingPanel({ runtime, models, onRuntimeChange, onModelsChan
               </li>
               <li>
                 <strong>Download model files</strong>
-                <span>Keep the default LoRA/adapters repo or change it to another Wan-family folder before downloading.</span>
+                <span>Use the default A14B I2V base plus the LightX2V low-VRAM files. In the Web UI you only choose 8GB, 16GB, or 24GB.</span>
               </li>
               <li>
                 <strong>Launch the Web UI</strong>
@@ -177,7 +177,7 @@ export function OnboardingPanel({ runtime, models, onRuntimeChange, onModelsChan
             </div>
             <div className="payment-guide">
               <strong>Recommended first test</strong>
-              <span>Run the notebook's smoke job on a free GPU first. If Drive/results work, upgrade only when you are ready to run the real Wan model.</span>
+              <span>Run the notebook's smoke job first. If Drive/results work, start with the 8GB build before paying for a larger GPU.</span>
             </div>
             <div className="code-recipe">
               <div>
@@ -190,11 +190,11 @@ export function OnboardingPanel({ runtime, models, onRuntimeChange, onModelsChan
               </div>
               <div>
                 <strong>Cell 2</strong>
-                <code>hf download lkzd7/WAN2.2_LoraSet_NSFW --local-dir /content/wan-studio/models/WAN2.2_LoraSet_NSFW</code>
+                <code>hf download Wan-AI/Wan2.2-I2V-A14B --local-dir /content/drive/MyDrive/WanStudio/models/Wan2.2-I2V-A14B</code>
               </div>
               <div>
                 <strong>Cell 3</strong>
-                <code>python wan_studio.py run --host 0.0.0.0 --port 7860 --share</code>
+                <code>python wan_studio.py run --host 127.0.0.1 --port 7860 --share --runner lightx2v</code>
               </div>
             </div>
           </section>
@@ -236,7 +236,7 @@ export function OnboardingPanel({ runtime, models, onRuntimeChange, onModelsChan
           <div className="step-number">{setupPage === "choose" ? "2" : "2"}</div>
           <div>
             <h2>Prepare a Wan model</h2>
-            <p>The default repo is a Wan2.2 LoRA/adapters set, but any Wan-family model folder can be connected.</p>
+            <p>The default repo is the Wan2.2 I2V A14B quality base. Runtime tuning happens later as 8GB, 16GB, or 24GB choices.</p>
           </div>
         </div>
 
@@ -246,7 +246,7 @@ export function OnboardingPanel({ runtime, models, onRuntimeChange, onModelsChan
               <h3>{RECOMMENDED_WAN_MODEL.displayName}</h3>
               <p>{RECOMMENDED_WAN_MODEL.repoId}</p>
             </div>
-            <a className="text-link" href="https://huggingface.co/lkzd7/WAN2.2_LoraSet_NSFW" target="_blank" rel="noreferrer">
+            <a className="text-link" href="https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B" target="_blank" rel="noreferrer">
               <ExternalLink size={16} />
               Model page
             </a>
@@ -269,7 +269,7 @@ export function OnboardingPanel({ runtime, models, onRuntimeChange, onModelsChan
           </label>
           <label>
             Repo id
-            <input value={repoId} onChange={(event) => setRepoId(event.target.value)} placeholder="lkzd7/WAN2.2_LoraSet_NSFW" />
+            <input value={repoId} onChange={(event) => setRepoId(event.target.value)} placeholder="Wan-AI/Wan2.2-I2V-A14B" />
           </label>
           <label className="wide-field">
             Download folder
@@ -290,7 +290,7 @@ export function OnboardingPanel({ runtime, models, onRuntimeChange, onModelsChan
         {runtime === "colab-drive" && setupPage !== "choose" && (
           <div className="colab-note">
             <HardDrive size={18} />
-            <span>After the Colab model check succeeds, keep this path connected here: `/content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW`.</span>
+            <span>After the Colab model check succeeds, keep this path connected here: `/content/drive/MyDrive/WanStudio/models/Wan2.2-I2V-A14B`.</span>
           </div>
         )}
 
@@ -300,7 +300,7 @@ export function OnboardingPanel({ runtime, models, onRuntimeChange, onModelsChan
             <input
               value={localPath}
               onChange={(event) => setLocalPath(event.target.value)}
-              placeholder={runtime === "colab-drive" ? "/content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW" : "/path/to/WAN2.2_LoraSet_NSFW"}
+              placeholder={runtime === "colab-drive" ? "/content/drive/MyDrive/WanStudio/models/Wan2.2-I2V-A14B" : "/path/to/Wan2.2-I2V-A14B"}
             />
             <button type="button" className="primary-button" onClick={addModel}>
               <Plus size={17} />

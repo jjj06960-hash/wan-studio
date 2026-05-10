@@ -15,8 +15,8 @@ interface ModelPanelProps {
 }
 
 export function ModelPanel({ models, onModelsChange }: ModelPanelProps) {
-  const [repoId, setRepoId] = useState("lkzd7/WAN2.2_LoraSet_NSFW");
-  const [targetPath, setTargetPath] = useState("./models/WAN2.2_LoraSet_NSFW");
+  const [repoId, setRepoId] = useState(RECOMMENDED_WAN_MODEL.repoId ?? "Wan-AI/Wan2.2-I2V-A14B");
+  const [targetPath, setTargetPath] = useState("./models/Wan2.2-I2V-A14B");
   const [source, setSource] = useState<ModelSource>("huggingface");
   const [localPath, setLocalPath] = useState("");
   const [copied, setCopied] = useState(false);
@@ -44,11 +44,11 @@ export function ModelPanel({ models, onModelsChange }: ModelPanelProps) {
         <div className="section-heading">
           <div>
             <h2>Optimized recommendation</h2>
-            <p>Default download target, not a lock-in.</p>
+            <p>Default A14B base for the 8GB/16GB/24GB builds.</p>
           </div>
           <span className="quality-chip">
             <ShieldCheck size={15} />
-            LoRA set
+            8GB ready
           </span>
         </div>
         <div className="model-hero">
@@ -56,7 +56,7 @@ export function ModelPanel({ models, onModelsChange }: ModelPanelProps) {
             <h3>{RECOMMENDED_WAN_MODEL.displayName}</h3>
             <p>{RECOMMENDED_WAN_MODEL.repoId}</p>
           </div>
-          <a className="text-link" href="https://huggingface.co/lkzd7/WAN2.2_LoraSet_NSFW" target="_blank" rel="noreferrer">
+          <a className="text-link" href="https://huggingface.co/Wan-AI/Wan2.2-I2V-A14B" target="_blank" rel="noreferrer">
             <ExternalLink size={16} />
             Hugging Face
           </a>
@@ -95,7 +95,7 @@ export function ModelPanel({ models, onModelsChange }: ModelPanelProps) {
           </label>
           <label>
             Repo id
-            <input value={repoId} onChange={(event) => setRepoId(event.target.value)} placeholder="lkzd7/WAN2.2_LoraSet_NSFW" />
+            <input value={repoId} onChange={(event) => setRepoId(event.target.value)} placeholder="Wan-AI/Wan2.2-I2V-A14B" />
           </label>
           <label className="wide-field">
             Download folder
@@ -116,7 +116,7 @@ export function ModelPanel({ models, onModelsChange }: ModelPanelProps) {
         <label className="folder-field">
           Local model folder
           <div>
-            <input value={localPath} onChange={(event) => setLocalPath(event.target.value)} placeholder="/path/to/WAN2.2_LoraSet_NSFW" />
+            <input value={localPath} onChange={(event) => setLocalPath(event.target.value)} placeholder="/path/to/Wan2.2-I2V-A14B" />
             <button type="button" className="primary-button" onClick={addModel}>
               <Plus size={17} />
               Add

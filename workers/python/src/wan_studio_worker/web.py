@@ -11,15 +11,19 @@ from pydantic import BaseModel, Field
 
 from .lora_compat import LORA_SUFFIXES, check_lora_compatibility, group_lora_files, lora_item_payload
 from .model_registry import build_hf_command, build_modelscope_command, create_model_install
-from .runner import FakeWanRunner, SubprocessWanRunner, WanRunner
-from .schemas import GenerationJob, GenerationRequest, GenerationStatus, JobState, ModelInstall, RuntimeKind, WanTask, status_for
+from .runner import FakeWanRunner, LightX2VRunner, SubprocessWanRunner, WanRunner
+from .schemas import GenerationJob, GenerationRequest, GenerationStatus, JobState, ModelInstall, RuntimeKind, VramTier, WanTask, status_for
 
 
-DEFAULT_REPO_ID = "lkzd7/WAN2.2_LoraSet_NSFW"
-DEFAULT_MODEL_DIR = "models/WAN2.2_LoraSet_NSFW"
-DEFAULT_MODEL_NOTE = "Default download is a Wan2.2 LoRA/adapters set; real Wan inference still needs a compatible Wan2.2 base model runner."
-WAN_BASE_REPO_ID = "Wan-AI/Wan2.2-TI2V-5B"
-WAN_BASE_MODEL_DIR = "models/Wan2.2-TI2V-5B"
+DEFAULT_REPO_ID = "Wan-AI/Wan2.2-I2V-A14B"
+DEFAULT_MODEL_DIR = "models/Wan2.2-I2V-A14B"
+DEFAULT_MODEL_NOTE = "Default base for Wan2.2 I2V 8GB/16GB/24GB optimized builds."
+DEFAULT_LORA_REPO_ID = "lkzd7/WAN2.2_LoraSet_NSFW"
+DEFAULT_LORA_MODEL_DIR = "models/WAN2.2_LoraSet_NSFW"
+FAST_BASE_REPO_ID = "Wan-AI/Wan2.2-TI2V-5B"
+FAST_BASE_MODEL_DIR = "models/Wan2.2-TI2V-5B"
+WAN_BASE_REPO_ID = DEFAULT_REPO_ID
+WAN_BASE_MODEL_DIR = DEFAULT_MODEL_DIR
 
 
 class ConnectModelInput(BaseModel):
@@ -31,10 +35,11 @@ class ConnectModelInput(BaseModel):
 class CreateJobInput(BaseModel):
     prompt: str
     model_id: str
-    task: WanTask = WanTask.TI2V
+    task: WanTask = WanTask.I2V
     image: str | None = None
-    size: str = "1280x704"
-    steps: int = 24
+    size: str = "832x480"
+    steps: int = 4
+    vram_tier_gb: VramTier = VramTier.GB8
     offload_model: bool = True
     t5_cpu: bool = True
     seed: int = 0
@@ -79,10 +84,13 @@ class WebState:
         candidates: list[tuple[str, Path, str]] = [
             (WAN_BASE_REPO_ID, self.root / WAN_BASE_MODEL_DIR, "huggingface"),
             (WAN_BASE_REPO_ID, Path(WAN_BASE_MODEL_DIR), "huggingface"),
-            (WAN_BASE_REPO_ID, Path("/content/drive/MyDrive/WanStudio/models/Wan2.2-TI2V-5B"), "huggingface"),
-            (DEFAULT_REPO_ID, self.root / DEFAULT_MODEL_DIR, "huggingface"),
-            (DEFAULT_REPO_ID, Path(DEFAULT_MODEL_DIR), "huggingface"),
-            (DEFAULT_REPO_ID, Path(f"/content/drive/MyDrive/WanStudio/{DEFAULT_MODEL_DIR}"), "huggingface"),
+            (WAN_BASE_REPO_ID, Path("/content/drive/MyDrive/WanStudio/models/Wan2.2-I2V-A14B"), "huggingface"),
+            (FAST_BASE_REPO_ID, self.root / FAST_BASE_MODEL_DIR, "huggingface"),
+            (FAST_BASE_REPO_ID, Path(FAST_BASE_MODEL_DIR), "huggingface"),
+            (FAST_BASE_REPO_ID, Path("/content/drive/MyDrive/WanStudio/models/Wan2.2-TI2V-5B"), "huggingface"),
+            (DEFAULT_LORA_REPO_ID, self.root / DEFAULT_LORA_MODEL_DIR, "huggingface"),
+            (DEFAULT_LORA_REPO_ID, Path(DEFAULT_LORA_MODEL_DIR), "huggingface"),
+            (DEFAULT_LORA_REPO_ID, Path(f"/content/drive/MyDrive/WanStudio/{DEFAULT_LORA_MODEL_DIR}"), "huggingface"),
         ]
         discovered: list[ModelInstall] = []
         for repo_id, path, source in candidates:
@@ -109,6 +117,8 @@ def create_app(*, root: Path | None = None, runner_kind: str = "fake", wan_repo_
         if not wan_repo_dir:
             raise ValueError("--wan-repo-dir is required when --runner wan is used")
         runner = SubprocessWanRunner(wan_repo_dir)
+    elif runner_kind == "lightx2v":
+        runner = LightX2VRunner()
     else:
         runner = FakeWanRunner()
 
@@ -122,8 +132,8 @@ def create_app(*, root: Path | None = None, runner_kind: str = "fake", wan_repo_
 
     @app.get("/api/state")
     async def get_state() -> dict[str, object]:
-        suggested_real_model_dir = "/content/drive/MyDrive/WanStudio/models/Wan2.2-TI2V-5B" if Path("/content").exists() else str(state.root / WAN_BASE_MODEL_DIR)
-        suggested_lora_dir = f"/content/drive/MyDrive/WanStudio/{DEFAULT_MODEL_DIR}" if Path("/content").exists() else str(state.root / DEFAULT_MODEL_DIR)
+        suggested_real_model_dir = "/content/drive/MyDrive/WanStudio/models/Wan2.2-I2V-A14B" if Path("/content").exists() else str(state.root / WAN_BASE_MODEL_DIR)
+        suggested_lora_dir = f"/content/drive/MyDrive/WanStudio/{DEFAULT_LORA_MODEL_DIR}" if Path("/content").exists() else str(state.root / DEFAULT_LORA_MODEL_DIR)
         return {
             "root": str(state.root),
             "runner": runner_kind,
@@ -135,13 +145,15 @@ def create_app(*, root: Path | None = None, runner_kind: str = "fake", wan_repo_
             "defaultModelNote": DEFAULT_MODEL_NOTE,
             "wanBaseRepoId": WAN_BASE_REPO_ID,
             "wanBaseModelDir": suggested_real_model_dir,
-            "defaultLoraRepoId": DEFAULT_REPO_ID,
+            "fastBaseRepoId": FAST_BASE_REPO_ID,
+            "fastBaseModelDir": str(state.root / FAST_BASE_MODEL_DIR),
+            "defaultLoraRepoId": DEFAULT_LORA_REPO_ID,
             "defaultLoraModelDir": suggested_lora_dir,
         }
 
     @app.get("/api/loras")
     async def list_loras(path: str | None = None, model_path: str | None = None) -> dict[str, object]:
-        root = Path(path or state.root / DEFAULT_MODEL_DIR).expanduser()
+        root = Path(path or state.root / DEFAULT_LORA_MODEL_DIR).expanduser()
         if not root.exists():
             return {"loras": [], "items": [], "groups": []}
         if root.is_file():
@@ -173,6 +185,13 @@ def create_app(*, root: Path | None = None, runner_kind: str = "fake", wan_repo_
             raise HTTPException(status_code=404, detail="model not connected")
         if model.status != "ready":
             raise HTTPException(status_code=400, detail=f"model is {model.status}, not ready")
+        if data.task == WanTask.I2V and not (data.image or "").strip():
+            raise HTTPException(status_code=400, detail="I2V generation requires an image reference path")
+        if runner_kind == "wan" and data.vram_tier_gb in {VramTier.GB8, VramTier.GB16, VramTier.GB24} and "a14b" in model.local_path.lower():
+            raise HTTPException(
+                status_code=400,
+                detail="8/16/24 GB A14B presets require the LightX2V runner; the official Wan runner is only the 80GB quality baseline.",
+            )
         for lora_path in data.lora_paths:
             compatibility = check_lora_compatibility(Path(lora_path).expanduser(), Path(model.local_path).expanduser())
             if compatibility.compatible is False:
@@ -185,6 +204,7 @@ def create_app(*, root: Path | None = None, runner_kind: str = "fake", wan_repo_
             size=data.size,
             seed=data.seed,
             steps=data.steps,
+            vram_tier_gb=data.vram_tier_gb,
             offload_model=data.offload_model,
             t5_cpu=data.t5_cpu,
             lora_paths=data.lora_paths,
@@ -377,7 +397,7 @@ INDEX_HTML = r"""<!doctype html>
       <header class="topbar">
         <div>
           <h1>Wan Studio</h1>
-          <p>Download the default Wan adapter set, connect the folder, then continue from this Web UI.</p>
+          <p>Choose 8GB, 16GB, or 24GB. Wan Studio maps that to an optimized Wan workflow behind the scenes.</p>
         </div>
         <span class="badge" id="runnerBadge">Loading</span>
       </header>
@@ -393,13 +413,13 @@ INDEX_HTML = r"""<!doctype html>
                 <select id="source"><option value="huggingface">Hugging Face</option><option value="modelscope">ModelScope</option><option value="local">Local only</option></select>
               </label>
               <label>Repo id
-                <input id="repoId" value="lkzd7/WAN2.2_LoraSet_NSFW" />
+                <input id="repoId" value="Wan-AI/Wan2.2-I2V-A14B" />
               </label>
             </div>
             <label>Model folder
-              <input id="modelPath" value="models/WAN2.2_LoraSet_NSFW" />
+              <input id="modelPath" value="models/Wan2.2-I2V-A14B" />
             </label>
-            <div class="notice">Default repo is a Wan2.2 LoRA/adapters set. For real Wan inference, pair it with a compatible Wan2.2 base model runner.</div>
+            <div class="notice">Default base is Wan2.2 I2V A14B. Use the LoRA field below for adapter folders such as WAN2.2_LoraSet_NSFW.</div>
             <div class="command" id="downloadCommand"></div>
             <button class="button" id="connectModel">Connect model</button>
             <div id="modelMessage" class="muted"></div>
@@ -419,17 +439,25 @@ INDEX_HTML = r"""<!doctype html>
             </label>
             <div class="row">
               <label>Task
-                <select id="task"><option value="t2v">Text to video</option><option value="i2v">Image to video</option><option value="ti2v">Text + image to video</option></select>
+                <select id="task"><option value="i2v" selected>Image to video</option><option value="t2v">Text to video</option><option value="ti2v">Text + image to video</option></select>
               </label>
+              <label>VRAM budget
+                <select id="vramTier"><option value="8" selected>8 GB</option><option value="16">16 GB</option><option value="24">24 GB</option></select>
+              </label>
+            </div>
+            <div class="row">
               <label>Size
-                <input id="size" value="832x480" />
+                <input id="size" value="832x480" readonly />
+              </label>
+              <label>Steps
+                <input id="steps" type="number" min="1" max="80" value="4" readonly />
               </label>
             </div>
             <label>Prompt text
               <textarea id="promptText">A cinematic camera move across a quiet neon street after rain.</textarea>
             </label>
             <label>Image reference path
-              <input id="imagePath" placeholder="/path/to/reference.png" />
+              <input id="imagePath" placeholder="/path/to/source-image.png" />
             </label>
             <label>LoRA adapter folder or file
               <input id="loraPath" placeholder="/content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW or a .safetensors file" />
@@ -443,14 +471,9 @@ INDEX_HTML = r"""<!doctype html>
               </label>
             </div>
             <button class="button secondary" id="scanLoras">Scan LoRA files</button>
-            <div class="row">
-              <label>Steps
-                <input id="steps" type="number" min="1" max="80" value="18" />
-              </label>
-              <label>Seed
-                <input id="seed" type="number" value="0" />
-              </label>
-            </div>
+            <label>Seed
+              <input id="seed" type="number" value="0" />
+            </label>
             <button class="button" id="runJob">Run generation</button>
             <div id="jobMessage" class="muted"></div>
           </div>
@@ -468,6 +491,11 @@ INDEX_HTML = r"""<!doctype html>
   </main>
   <script>
     const state = { models: [], jobs: [], root: "", runner: "fake", loraItems: [], loraGroups: [] };
+    const vramPresets = {
+      8: { size: "832x480", steps: 4, label: "8GB low-VRAM build" },
+      16: { size: "960x544", steps: 4, label: "16GB balanced build" },
+      24: { size: "1280x720", steps: 4, label: "24GB quality build" }
+    };
     const $ = (id) => document.getElementById(id);
     const appBase = () => new URL(".", window.location.href);
     const appUrl = (path) => new URL(path.replace(/^\/+/, ""), appBase()).toString();
@@ -506,6 +534,14 @@ INDEX_HTML = r"""<!doctype html>
       return `hf download ${repo} --local-dir ${path}`;
     }
 
+    function applyVramPreset() {
+      const tier = Number($("vramTier").value) || 8;
+      const preset = vramPresets[tier] || vramPresets[8];
+      $("size").value = preset.size;
+      $("steps").value = preset.steps;
+      $("jobMessage").textContent = `${preset.label}: ${preset.size}, ${preset.steps} distilled steps.`;
+    }
+
     function renderModels() {
       $("downloadCommand").textContent = commandFor();
       $("modelCount").textContent = state.models.length ? `${state.models.length} connected model(s)` : "No models connected.";
@@ -523,8 +559,10 @@ INDEX_HTML = r"""<!doctype html>
       $("readyBanner").textContent = ready.length
         ? "Ready to prompt! A connected folder is available in this Web UI."
         : state.runner === "wan"
-          ? "Real Wan runner mode. Connect Wan-AI/Wan2.2-TI2V-5B or another compatible base checkpoint folder first."
-          : "Connect a ready Wan-compatible folder first.";
+          ? "Official Wan runner mode. A14B 8/16/24GB presets need --runner lightx2v."
+          : state.runner === "lightx2v"
+            ? "LightX2V runner mode. Connect a Wan2.2 A14B folder, choose 8GB, 16GB, or 24GB, then prompt."
+            : "Connect a ready Wan-compatible folder first.";
     }
 
     function renderJobs() {
@@ -554,13 +592,16 @@ INDEX_HTML = r"""<!doctype html>
       state.jobs = payload.jobs || [];
       $("runnerBadge").textContent = `${state.runner} runner · ${state.root}`;
       if (state.runner === "wan") {
-        if ($("repoId").value === payload.defaultRepoId) $("repoId").value = payload.wanBaseRepoId || "Wan-AI/Wan2.2-TI2V-5B";
-        if ($("modelPath").value.includes("WAN2.2_LoraSet_NSFW")) $("modelPath").value = payload.wanBaseModelDir || "models/Wan2.2-TI2V-5B";
+        if (!$("repoId").value || $("repoId").value === payload.defaultLoraRepoId) $("repoId").value = payload.wanBaseRepoId || "Wan-AI/Wan2.2-I2V-A14B";
+        if (!$("modelPath").value || $("modelPath").value.includes("WAN2.2_LoraSet_NSFW")) $("modelPath").value = payload.wanBaseModelDir || "models/Wan2.2-I2V-A14B";
         if (!$("loraPath").value) $("loraPath").value = payload.defaultLoraModelDir || "";
-        if ($("size").value === "832x480") $("size").value = "1280x704";
-        if ($("steps").value === "18") $("steps").value = "24";
-        $("readyBanner").textContent = "Real Wan runner mode. Connect Wan-AI/Wan2.2-TI2V-5B or another compatible base checkpoint folder.";
+        $("task").value = "i2v";
+        $("readyBanner").textContent = "Official Wan runner mode. A14B 8/16/24GB presets need --runner lightx2v.";
+      } else if (state.runner === "lightx2v") {
+        $("task").value = "i2v";
+        $("readyBanner").textContent = "LightX2V runner mode. Choose 8GB, 16GB, or 24GB, add an image reference, then prompt.";
       }
+      applyVramPreset();
       renderModels();
       renderJobs();
     }
@@ -628,6 +669,7 @@ INDEX_HTML = r"""<!doctype html>
             image: $("imagePath").value,
             size: $("size").value,
             steps: Number($("steps").value),
+            vram_tier_gb: Number($("vramTier").value),
             seed: Number($("seed").value),
             offload_model: true,
             t5_cpu: true,
@@ -649,6 +691,7 @@ INDEX_HTML = r"""<!doctype html>
     }
 
     ["source", "repoId", "modelPath"].forEach((id) => $(id).addEventListener("input", renderModels));
+    $("vramTier").addEventListener("change", applyVramPreset);
     $("connectModel").addEventListener("click", () => connectModel().catch((error) => $("modelMessage").textContent = error.message));
     $("scanLoras").addEventListener("click", () => scanLoras().catch((error) => $("jobMessage").textContent = error.message));
     $("runJob").addEventListener("click", () => runJob().catch((error) => $("jobMessage").textContent = error.message));

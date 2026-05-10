@@ -26,6 +26,34 @@ def test_recommended_model_capabilities() -> None:
     assert capabilities.tasks == [WanTask.T2V, WanTask.I2V, WanTask.TI2V]
 
 
+def test_default_quality_base_capabilities() -> None:
+    capabilities = infer_capabilities("Wan-AI/Wan2.2-I2V-A14B")
+    assert capabilities.optimized is True
+    assert capabilities.min_vram_gb == 80
+    assert capabilities.tasks == [WanTask.I2V]
+
+
+def test_quantized_a14b_gguf_capabilities_target_low_vram() -> None:
+    capabilities = infer_capabilities("QuantStack/Wan2.2-I2V-A14B-GGUF HighNoise Q4_K_M")
+
+    assert capabilities.optimized is True
+    assert capabilities.min_vram_gb == 8
+    assert capabilities.tasks == [WanTask.I2V]
+    assert any("low-VRAM" in note for note in capabilities.notes)
+
+
+def test_gguf_folder_inspection(tmp_path: Path) -> None:
+    model_dir = tmp_path / "Wan2.2-I2V-A14B-GGUF"
+    model_dir.mkdir()
+    (model_dir / "Wan2.2-I2V-A14B-HighNoise-Q4_K_M.gguf").write_text("fake", encoding="utf-8")
+    (model_dir / "Wan2.2-I2V-A14B-LowNoise-Q4_K_M.gguf").write_text("fake", encoding="utf-8")
+
+    inspection = inspect_model_folder(str(model_dir))
+
+    assert inspection.status == "ready"
+    assert inspection.capabilities.min_vram_gb == 8
+
+
 def test_folder_inspection(tmp_path: Path) -> None:
     model_dir = tmp_path / "Wan2.1-I2V-custom"
     model_dir.mkdir()

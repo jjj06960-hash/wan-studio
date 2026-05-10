@@ -5,6 +5,7 @@ export type ModelSource = "huggingface" | "modelscope" | "local";
 export type ModelStatus = "recommended" | "ready" | "missing" | "invalid" | "unchecked";
 
 export type RuntimeKind = "local" | "colab-drive";
+export type VramTierGb = 8 | 16 | 24;
 
 export interface ModelCapabilities {
   tasks: WanTask[];
@@ -35,6 +36,7 @@ export interface GenerationRequest {
   size: string;
   seed: number;
   steps: number;
+  vramTierGb: VramTierGb;
   offloadModel: boolean;
   t5Cpu: boolean;
   runtime: RuntimeKind;
@@ -59,6 +61,7 @@ export interface GenerationJob {
 export interface PresetSettings {
   size: string;
   steps: number;
+  vramTierGb: VramTierGb;
   offloadModel: boolean;
   t5Cpu: boolean;
 }
