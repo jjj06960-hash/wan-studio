@@ -84,10 +84,10 @@ Optional default download:
 Start the Web UI:
 
 ```python
-!python wan_studio.py run --host 0.0.0.0 --port 7860 --share
+!python wan_studio.py run --host 127.0.0.1 --port 7860 --share
 ```
 
-Colab will expose a browser window for port `7860`. Keep that cell running while using the UI.
+Colab will show an iframe and print an `Open Wan Studio Web UI:` proxy link for port `7860`. Use that proxy link, not a `0.0.0.0` or `127.0.0.1` link. Keep that cell running while using the UI.
 
 ## Runner Modes
 

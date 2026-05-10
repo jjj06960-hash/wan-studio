@@ -4,6 +4,7 @@ import argparse
 import sys
 import threading
 import time
+import urllib.request
 import webbrowser
 from pathlib import Path
 
@@ -48,16 +49,18 @@ def run_web(args: argparse.Namespace) -> None:
         threading.Timer(1.0, lambda: webbrowser.open(url)).start()
 
     if args.share and in_colab():
-        config = uvicorn.Config(app, host=args.host, port=args.port, log_level="info")
+        config = uvicorn.Config(app, host=args.host, port=args.port, log_level="warning")
         server = uvicorn.Server(config)
         thread = threading.Thread(target=server.run, daemon=True)
         thread.start()
-        time.sleep(2)
+        ready = wait_for_local_server(args.port)
         from google.colab import output  # type: ignore
 
+        if not ready:
+            print(f"Wan Studio did not answer on port {args.port} yet. If the iframe fails, rerun this cell.")
         try:
             proxy_url = output.eval_js(f"google.colab.kernel.proxyPort({args.port})")
-            print(f"Wan Studio Web UI: {proxy_url}")
+            print(f"Open Wan Studio Web UI: {proxy_url}")
         except Exception:
             proxy_url = None
         try:
@@ -74,6 +77,18 @@ def run_web(args: argparse.Namespace) -> None:
 
     print(f"Wan Studio Web UI: {url}")
     uvicorn.run(app, host=args.host, port=args.port)
+
+
+def wait_for_local_server(port: int, *, timeout_seconds: float = 20) -> bool:
+    deadline = time.time() + timeout_seconds
+    url = f"http://127.0.0.1:{port}/api/state"
+    while time.time() < deadline:
+        try:
+            with urllib.request.urlopen(url, timeout=1) as response:
+                return response.status < 500
+        except Exception:
+            time.sleep(0.25)
+    return False
 
 
 def in_colab() -> bool:
