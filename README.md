@@ -2,7 +2,7 @@
 
 Wan Studio is an experimental installable Web UI for running Wan-family open-source video models without ComfyUI. The intended distribution flow is FaceFusion-style: clone the GitHub repo, run the installer, then open the local browser UI.
 
-The current default download target is [`lkzd7/WAN2.2_LoraSet_NSFW`](https://huggingface.co/lkzd7/WAN2.2_LoraSet_NSFW). It is treated as a Wan2.2 LoRA/adapters set, not a locked product default or a standalone base checkpoint. For real Wan inference, pair it with a compatible Wan2.2 base model runner.
+The current default download target is [`lkzd7/WAN2.2_LoraSet_NSFW`](https://huggingface.co/lkzd7/WAN2.2_LoraSet_NSFW). It is treated as a Wan2.2 LoRA/adapters set, not a locked product default or a standalone base checkpoint. The app scans adapter folders, groups LOW/HIGH LoRA pairs into embedded workflow presets, and blocks incompatible base-model combinations before a job is queued.
 
 ## Quick Start
 
@@ -21,6 +21,8 @@ hf download lkzd7/WAN2.2_LoraSet_NSFW --local-dir ./models/WAN2.2_LoraSet_NSFW
 ```
 
 Users can replace the repo id and folder with any Wan-family model or adapter folder they want to test.
+
+For the workflow philosophy and embedded preset map, see [`docs/workflow-presets.md`](docs/workflow-presets.md).
 
 ## Colab
 

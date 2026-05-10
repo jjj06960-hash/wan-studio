@@ -94,7 +94,7 @@ def build_wan_generate_command(request: GenerationRequest, wan_repo_dir: Path, *
     """Builds the official Wan generate.py command shape without executing it."""
     generate_args = [
         "--task",
-        request.task.value if request.task.value != "ti2v" else "ti2v-5B",
+        wan_task_name(request),
         "--size",
         request.size.replace("x", "*"),
         "--ckpt_dir",
@@ -132,6 +132,19 @@ def build_wan_generate_command(request: GenerationRequest, wan_repo_dir: Path, *
         return command
 
     return ["python", str(wan_repo_dir / "generate.py"), *generate_args]
+
+
+def wan_task_name(request: GenerationRequest) -> str:
+    value = request.task.value
+    model_hint = f"{request.model_id} {request.model_path}".lower()
+    if value == "ti2v":
+        return "ti2v-5B"
+    if "a14b" in model_hint:
+        if value == "t2v":
+            return "t2v-A14B"
+        if value == "i2v":
+            return "i2v-A14B"
+    return value
 
 
 def write_status(path: Path, status: GenerationStatus) -> None:

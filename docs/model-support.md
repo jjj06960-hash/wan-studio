@@ -17,6 +17,13 @@ Wan Studio v1 supports Wan-family models first.
 - Recommended local target: 24 GB VRAM class GPU
 - Safe preset: `1280x704`, 24 steps, model offload enabled, T5 on CPU
 
+## Quality LoRA preset
+
+- Base: `Wan-AI/Wan2.2-I2V-A14B` for I2V adapter sets
+- Adapter: selected LOW/HIGH `.safetensors` pair from `lkzd7/WAN2.2_LoraSet_NSFW`
+- Why: most files in that adapter set are A14B I2V LoRAs with a 5120 hidden dimension
+- Web UI behavior: `Scan LoRA files` groups LOW/HIGH pairs and disables incompatible options for the currently selected base model
+
 ## Custom Wan models
 
 Users can connect a local folder for Wan2.1, Wan2.2, and Wan-derived checkpoints. The app inspects the folder name and model files to infer capabilities:
@@ -34,6 +41,6 @@ Wan-derived models without a known optimization profile start with the safe low-
 The Web UI exposes a LoRA adapter layer in the Prompt panel:
 
 - Paste a `.safetensors` file path directly, or paste a folder and click `Scan LoRA files`.
-- Select one adapter file before running a job.
-- For Wan2.2 A14B models, LOW/HIGH adapter filenames are routed to the low-noise and high-noise models when both are supplied through the API.
-- Shape mismatches fail the job with a compatibility message instead of silently producing a broken output.
+- Select an embedded preset before running a job.
+- For Wan2.2 A14B models, LOW/HIGH adapter filenames are grouped and routed to the low-noise and high-noise models together.
+- Shape mismatches are detected before queueing and point the user to the compatible A14B base preset.

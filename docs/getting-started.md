@@ -84,8 +84,12 @@ from pathlib import Path
 
 drive.mount('/content/drive')
 
-BASE_REPO_ID = 'Wan-AI/Wan2.2-TI2V-5B'
-BASE_MODEL_DIR = Path('/content/drive/MyDrive/WanStudio/models/Wan2.2-TI2V-5B')
+USE_A14B_I2V_FOR_LORA_PRESET = False  # Set True when using the default A14B I2V LoRA set for real quality runs.
+
+FAST_BASE_REPO_ID = 'Wan-AI/Wan2.2-TI2V-5B'
+FAST_BASE_MODEL_DIR = Path('/content/drive/MyDrive/WanStudio/models/Wan2.2-TI2V-5B')
+A14B_I2V_REPO_ID = 'Wan-AI/Wan2.2-I2V-A14B'
+A14B_I2V_MODEL_DIR = Path('/content/drive/MyDrive/WanStudio/models/Wan2.2-I2V-A14B')
 LORA_REPO_ID = 'lkzd7/WAN2.2_LoraSet_NSFW'
 LORA_MODEL_DIR = Path('/content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW')
 WEIGHT_SUFFIXES = {'.safetensors', '.bin', '.pt', '.pth', '.ckpt'}
@@ -97,10 +101,16 @@ def has_weights(model_dir):
         path.suffix in WEIGHT_SUFFIXES for path in model_dir.rglob('*') if path.is_file()
     )
 
-if has_weights(BASE_MODEL_DIR):
-    print('Base model already exists in Drive:', BASE_MODEL_DIR)
+if has_weights(FAST_BASE_MODEL_DIR):
+    print('Fast base model already exists in Drive:', FAST_BASE_MODEL_DIR)
 else:
-    !hf download {BASE_REPO_ID} --local-dir {BASE_MODEL_DIR}
+    !hf download {FAST_BASE_REPO_ID} --local-dir {FAST_BASE_MODEL_DIR}
+
+if USE_A14B_I2V_FOR_LORA_PRESET:
+    if has_weights(A14B_I2V_MODEL_DIR):
+        print('A14B I2V base model already exists in Drive:', A14B_I2V_MODEL_DIR)
+    else:
+        !hf download {A14B_I2V_REPO_ID} --local-dir {A14B_I2V_MODEL_DIR}
 
 if has_weights(LORA_MODEL_DIR):
     print('LoRA set already exists in Drive:', LORA_MODEL_DIR)
@@ -134,13 +144,19 @@ In the Web UI, connect this model folder if it is not detected automatically:
 /content/drive/MyDrive/WanStudio/models/Wan2.2-TI2V-5B
 ```
 
-To attach the optional LoRA set, paste this folder in `LoRA adapter folder or file`, click `Scan LoRA files`, then select one adapter file:
+For the default LoRA set, use the A14B I2V quality preset instead:
+
+```text
+/content/drive/MyDrive/WanStudio/models/Wan2.2-I2V-A14B
+```
+
+To attach the optional LoRA set, paste this folder in `LoRA adapter folder or file`, click `Scan LoRA files`, then select a compatible embedded preset. LOW/HIGH pairs are grouped automatically:
 
 ```text
 /content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW
 ```
 
-Real generation needs a 24 GB+ GPU. If Colab assigns a T4, the UI can open but generation may fail with an out-of-memory error.
+Real generation needs a strong GPU. TI2V-5B is the practical 24 GB starter path; A14B quality presets are much larger and may require A100/L40S/H100-class hardware or more optimized future runners.
 
 ## Runner Modes
 

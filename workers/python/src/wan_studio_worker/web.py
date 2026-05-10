@@ -9,10 +9,10 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
+from .lora_compat import LORA_SUFFIXES, check_lora_compatibility, group_lora_files, lora_item_payload
 from .model_registry import build_hf_command, build_modelscope_command, create_model_install
 from .runner import FakeWanRunner, SubprocessWanRunner, WanRunner
 from .schemas import GenerationJob, GenerationRequest, GenerationStatus, JobState, ModelInstall, RuntimeKind, WanTask, status_for
-from .wan_lora_generate import LORA_SUFFIXES
 
 
 DEFAULT_REPO_ID = "lkzd7/WAN2.2_LoraSet_NSFW"
@@ -140,15 +140,26 @@ def create_app(*, root: Path | None = None, runner_kind: str = "fake", wan_repo_
         }
 
     @app.get("/api/loras")
-    async def list_loras(path: str | None = None) -> dict[str, object]:
+    async def list_loras(path: str | None = None, model_path: str | None = None) -> dict[str, object]:
         root = Path(path or state.root / DEFAULT_MODEL_DIR).expanduser()
         if not root.exists():
-            return {"loras": []}
+            return {"loras": [], "items": [], "groups": []}
         if root.is_file():
             loras = [root] if root.suffix.lower() in LORA_SUFFIXES else []
         else:
             loras = sorted(item for item in root.rglob("*") if item.is_file() and item.suffix.lower() in LORA_SUFFIXES)
-        return {"loras": [str(item) for item in loras[:200]], "truncated": len(loras) > 200}
+        limited = loras[:200]
+        base_path = Path(model_path).expanduser() if model_path else None
+        items = [lora_item_payload(item, model_path=base_path) for item in limited]
+        groups = [
+            {
+                "label": group.label,
+                "paths": [str(item) for item in group.paths],
+                "names": [item.name for item in group.paths],
+            }
+            for group in group_lora_files(limited)
+        ]
+        return {"loras": [str(item) for item in limited], "items": items, "groups": groups, "truncated": len(loras) > 200}
 
     @app.post("/api/models/connect")
     async def connect_model(data: ConnectModelInput) -> dict[str, object]:
@@ -162,6 +173,10 @@ def create_app(*, root: Path | None = None, runner_kind: str = "fake", wan_repo_
             raise HTTPException(status_code=404, detail="model not connected")
         if model.status != "ready":
             raise HTTPException(status_code=400, detail=f"model is {model.status}, not ready")
+        for lora_path in data.lora_paths:
+            compatibility = check_lora_compatibility(Path(lora_path).expanduser(), Path(model.local_path).expanduser())
+            if compatibility.compatible is False:
+                raise HTTPException(status_code=400, detail=compatibility.reason)
         request = GenerationRequest(
             prompt=data.prompt,
             image=data.image or None,
@@ -452,10 +467,11 @@ INDEX_HTML = r"""<!doctype html>
     </section>
   </main>
   <script>
-    const state = { models: [], jobs: [], root: "", runner: "fake" };
+    const state = { models: [], jobs: [], root: "", runner: "fake", loraItems: [], loraGroups: [] };
     const $ = (id) => document.getElementById(id);
     const appBase = () => new URL(".", window.location.href);
     const appUrl = (path) => new URL(path.replace(/^\/+/, ""), appBase()).toString();
+    const escapeHtml = (value) => String(value).replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[char]));
 
     function setBusy(active, title = "Working", text = "Please keep this tab open.") {
       $("loadingTitle").textContent = title;
@@ -562,20 +578,41 @@ INDEX_HTML = r"""<!doctype html>
     function selectedLoraPaths() {
       const selected = $("loraSelect").value;
       const rawPath = $("loraPath").value.trim();
-      if (selected) return [selected];
+      if (selected) return selected.split("||").filter(Boolean);
       if (rawPath.match(/\.(safetensors|pt|pth|ckpt)$/i)) return [rawPath];
       return [];
     }
 
+    function selectedModel() {
+      return state.models.find((model) => model.modelId === $("modelSelect").value);
+    }
+
+    function loraItemFor(path) {
+      return state.loraItems.find((item) => item.path === path);
+    }
+
     async function scanLoras() {
       const rawPath = $("loraPath").value.trim();
-      const payload = await withBusy("Scanning LoRA files", "Reading adapter files from the selected folder.", () => api(`api/loras?path=${encodeURIComponent(rawPath)}`));
-      const loras = payload.loras || [];
-      $("loraSelect").innerHTML = loras.length
-        ? [`<option value="">No LoRA layer</option>`, ...loras.map((path) => `<option value="${path}">${path.split("/").pop()}</option>`)].join("")
+      const params = new URLSearchParams({ path: rawPath });
+      const currentModel = selectedModel();
+      if (currentModel?.localPath) params.set("model_path", currentModel.localPath);
+      const payload = await withBusy("Scanning LoRA files", "Reading adapter files from the selected folder and matching them to the selected base model.", () => api(`api/loras?${params.toString()}`));
+      state.loraItems = payload.items || [];
+      state.loraGroups = payload.groups || [];
+      const compatibleGroups = state.loraGroups.filter((group) => group.paths.every((path) => loraItemFor(path)?.compatible !== false));
+      $("loraSelect").innerHTML = state.loraGroups.length
+        ? [`<option value="">No LoRA layer</option>`, ...state.loraGroups.map((group) => {
+            const items = group.paths.map(loraItemFor).filter(Boolean);
+            const compatible = items.every((item) => item.compatible !== false);
+            const badge = group.paths.length > 1 ? "LOW + HIGH preset" : "single adapter";
+            return `<option value="${escapeHtml(group.paths.join("||"))}" ${compatible ? "" : "disabled"}>${escapeHtml(group.label)} · ${badge}${compatible ? "" : ` · incompatible`}</option>`;
+          })].join("")
         : `<option value="">No LoRA files found</option>`;
-      $("jobMessage").textContent = loras.length
-        ? `Found ${loras.length} LoRA file(s). Pick one before running if you want an adapter layer.`
+      const suggested = state.loraItems.find((item) => item.suggestedBaseRepo)?.suggestedBaseRepo;
+      $("jobMessage").textContent = state.loraGroups.length && !compatibleGroups.length
+        ? `Found ${state.loraGroups.length} embedded LoRA workflow preset(s), but none match the selected base. Use ${suggested || "a matching Wan2.2 A14B base model"} for this set.`
+        : compatibleGroups.length
+          ? `Found ${compatibleGroups.length} compatible embedded LoRA workflow preset(s). Pick one and run; LOW/HIGH pairs are attached together.`
         : "No LoRA files found at that path.";
     }
 

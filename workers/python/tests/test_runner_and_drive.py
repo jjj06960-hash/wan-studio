@@ -61,6 +61,7 @@ def test_build_wan_command_with_lora_uses_loader_wrapper() -> None:
     assert "0.75" in command
     assert "--ckpt_dir" in command
     assert "/models/Wan2.2-I2V-A14B" in command
+    assert "i2v-A14B" in command
     assert "--save_file" in command
     assert "/outputs/test.mp4" in command
 

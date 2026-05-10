@@ -9,8 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
-
-LORA_SUFFIXES = {".safetensors", ".pt", ".pth", ".ckpt"}
+from .lora_compat import LORA_SUFFIXES
 
 
 @dataclass(frozen=True)
