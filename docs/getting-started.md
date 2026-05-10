@@ -66,7 +66,7 @@ The app inspects the folder name and sampled files, then marks supported tasks s
 
 Use this when the local machine has no suitable GPU.
 
-In Colab:
+### 1. Clone and install Wan Studio
 
 ```python
 !git clone https://github.com/jjj06960-hash/wan-studio.git /content/wan-studio
@@ -74,20 +74,45 @@ In Colab:
 !python install.py --accelerator cuda --system
 ```
 
-Optional default download:
+### 2. Mount Drive and download once
+
+Store models in Drive so you do not download them every time the Colab runtime resets.
 
 ```python
+from google.colab import drive
+from pathlib import Path
+
+drive.mount('/content/drive')
+
+DEFAULT_REPO_ID = 'lkzd7/WAN2.2_LoraSet_NSFW'
+DEFAULT_MODEL_DIR = Path('/content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW')
+WEIGHT_SUFFIXES = {'.safetensors', '.bin', '.pt', '.pth', '.ckpt'}
+
 !pip install -U "huggingface_hub[cli]"
-!hf download lkzd7/WAN2.2_LoraSet_NSFW --local-dir /content/wan-studio/models/WAN2.2_LoraSet_NSFW
+
+has_weights = DEFAULT_MODEL_DIR.exists() and any(
+    path.suffix in WEIGHT_SUFFIXES for path in DEFAULT_MODEL_DIR.rglob('*') if path.is_file()
+)
+
+if has_weights:
+    print('Model already exists in Drive:', DEFAULT_MODEL_DIR)
+else:
+    !hf download {DEFAULT_REPO_ID} --local-dir {DEFAULT_MODEL_DIR}
 ```
 
-Start the Web UI:
+### 3. Start the Web UI
 
 ```python
 !python wan_studio.py run --host 127.0.0.1 --port 7860 --share
 ```
 
 Colab will show an iframe and print an `Open Wan Studio Web UI:` proxy link for port `7860`. Use that proxy link, not a `0.0.0.0` or `127.0.0.1` link. Keep that cell running while using the UI.
+
+In the Web UI, connect this model folder if it is not detected automatically:
+
+```text
+/content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW
+```
 
 ## Runner Modes
 
