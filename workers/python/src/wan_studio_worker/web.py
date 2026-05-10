@@ -393,9 +393,11 @@ INDEX_HTML = r"""<!doctype html>
   <script>
     const state = { models: [], jobs: [], root: "", runner: "fake" };
     const $ = (id) => document.getElementById(id);
+    const appBase = () => new URL(".", window.location.href);
+    const appUrl = (path) => new URL(path.replace(/^\/+/, ""), appBase()).toString();
 
     async function api(path, options = {}) {
-      const res = await fetch(path, { headers: { "content-type": "application/json" }, ...options });
+      const res = await fetch(appUrl(path), { headers: { "content-type": "application/json" }, ...options });
       if (!res.ok) {
         const text = await res.text();
         throw new Error(text || res.statusText);
@@ -435,7 +437,7 @@ INDEX_HTML = r"""<!doctype html>
       $("jobsList").innerHTML = state.jobs.length ? state.jobs.map((job) => {
         const status = job.status;
         const outputName = status.outputPath ? status.outputPath.split("/").pop() : "";
-        const output = outputName && status.state === "succeeded" ? `<p><a href="/outputs/${outputName}" target="_blank">${status.outputPath}</a></p>` : "";
+        const output = outputName && status.state === "succeeded" ? `<p><a href="${appUrl("outputs/" + outputName)}" target="_blank">${status.outputPath}</a></p>` : "";
         const error = status.error ? `<p class="error">${status.error}</p>` : "";
         return `<article class="card-row">
           <div>
@@ -450,7 +452,7 @@ INDEX_HTML = r"""<!doctype html>
     }
 
     async function loadState() {
-      const payload = await api("/api/state");
+      const payload = await api("api/state");
       state.root = payload.root;
       state.runner = payload.runner;
       state.models = payload.models || [];
@@ -462,7 +464,7 @@ INDEX_HTML = r"""<!doctype html>
 
     async function connectModel() {
       $("modelMessage").textContent = "Checking model folder...";
-      const payload = await api("/api/models/connect", {
+      const payload = await api("api/models/connect", {
         method: "POST",
         body: JSON.stringify({ repo_id: $("repoId").value, local_path: $("modelPath").value, source: $("source").value })
       });
@@ -472,7 +474,7 @@ INDEX_HTML = r"""<!doctype html>
 
     async function runJob() {
       $("jobMessage").textContent = "Queueing job...";
-      await api("/api/jobs", {
+      await api("api/jobs", {
         method: "POST",
         body: JSON.stringify({
           prompt: $("promptText").value,
@@ -491,7 +493,7 @@ INDEX_HTML = r"""<!doctype html>
     }
 
     async function refreshJobs() {
-      const payload = await api("/api/jobs");
+      const payload = await api("api/jobs");
       state.jobs = payload.jobs || [];
       renderJobs();
     }
@@ -500,8 +502,11 @@ INDEX_HTML = r"""<!doctype html>
     $("connectModel").addEventListener("click", () => connectModel().catch((error) => $("modelMessage").textContent = error.message));
     $("runJob").addEventListener("click", () => runJob().catch((error) => $("jobMessage").textContent = error.message));
     $("refreshJobs").addEventListener("click", () => refreshJobs());
-    setInterval(refreshJobs, 1800);
-    loadState();
+    setInterval(() => refreshJobs().catch(() => {}), 1800);
+    loadState().catch((error) => {
+      $("runnerBadge").textContent = "API not connected";
+      $("modelMessage").textContent = error.message;
+    });
   </script>
 </body>
 </html>"""

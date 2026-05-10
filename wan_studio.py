@@ -55,7 +55,15 @@ def run_web(args: argparse.Namespace) -> None:
         time.sleep(2)
         from google.colab import output  # type: ignore
 
-        output.serve_kernel_port_as_window(args.port)
+        try:
+            proxy_url = output.eval_js(f"google.colab.kernel.proxyPort({args.port})")
+            print(f"Wan Studio Web UI: {proxy_url}")
+        except Exception:
+            proxy_url = None
+        try:
+            output.serve_kernel_port_as_iframe(args.port, height=900)
+        except Exception:
+            output.serve_kernel_port_as_window(args.port)
         print(f"Wan Studio is running on Colab port {args.port}. Keep this cell alive.")
         try:
             while thread.is_alive():
