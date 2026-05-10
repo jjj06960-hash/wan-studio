@@ -27,12 +27,15 @@ def test_build_wan_command_shape() -> None:
         task=WanTask.TI2V,
     )
 
-    command = build_wan_generate_command(request, Path("/opt/Wan2.2"))
+    command = build_wan_generate_command(request, Path("/opt/Wan2.2"), save_file=Path("/outputs/test.mp4"))
 
     assert command[:3] == ["python", "/opt/Wan2.2/generate.py", "--task"]
     assert "ti2v-5B" in command
     assert "/models/Wan2.2-TI2V-5B" in command
     assert "--image" in command
+    assert "--base_seed" in command
+    assert "--save_file" in command
+    assert "/outputs/test.mp4" in command
 
 
 def test_drive_worker_processes_camel_case_job(tmp_path: Path) -> None:

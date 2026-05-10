@@ -74,9 +74,9 @@ Use this when the local machine has no suitable GPU.
 !python install.py --accelerator cuda --system
 ```
 
-### 2. Mount Drive and download once
+### 2. Mount Drive and download the real base model once
 
-Store models in Drive so you do not download them every time the Colab runtime resets.
+Store the real Wan2.2 base model in Drive so you do not download it every time the Colab runtime resets. The default LoRA/adapters repo is useful for future adapter support, but it is not enough for video generation by itself.
 
 ```python
 from google.colab import drive
@@ -84,26 +84,38 @@ from pathlib import Path
 
 drive.mount('/content/drive')
 
-DEFAULT_REPO_ID = 'lkzd7/WAN2.2_LoraSet_NSFW'
-DEFAULT_MODEL_DIR = Path('/content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW')
+BASE_REPO_ID = 'Wan-AI/Wan2.2-TI2V-5B'
+BASE_MODEL_DIR = Path('/content/drive/MyDrive/WanStudio/models/Wan2.2-TI2V-5B')
 WEIGHT_SUFFIXES = {'.safetensors', '.bin', '.pt', '.pth', '.ckpt'}
 
 !pip install -U "huggingface_hub[cli]"
 
-has_weights = DEFAULT_MODEL_DIR.exists() and any(
-    path.suffix in WEIGHT_SUFFIXES for path in DEFAULT_MODEL_DIR.rglob('*') if path.is_file()
+has_weights = BASE_MODEL_DIR.exists() and any(
+    path.suffix in WEIGHT_SUFFIXES for path in BASE_MODEL_DIR.rglob('*') if path.is_file()
 )
 
 if has_weights:
-    print('Model already exists in Drive:', DEFAULT_MODEL_DIR)
+    print('Base model already exists in Drive:', BASE_MODEL_DIR)
 else:
-    !hf download {DEFAULT_REPO_ID} --local-dir {DEFAULT_MODEL_DIR}
+    !hf download {BASE_REPO_ID} --local-dir {BASE_MODEL_DIR}
 ```
 
-### 3. Start the Web UI
+### 3. Install the official Wan runner
 
 ```python
-!python wan_studio.py run --host 127.0.0.1 --port 7860 --share
+WAN_REPO_DIR = '/content/Wan2.2'
+
+!rm -rf {WAN_REPO_DIR}
+!git clone https://github.com/Wan-Video/Wan2.2.git {WAN_REPO_DIR}
+%cd {WAN_REPO_DIR}
+!pip install -r requirements.txt
+```
+
+### 4. Start the Web UI in real generation mode
+
+```python
+%cd /content/wan-studio
+!python wan_studio.py run --host 127.0.0.1 --port 7860 --share --runner wan --wan-repo-dir /content/Wan2.2
 ```
 
 Colab will show an iframe and print an `Open Wan Studio Web UI:` proxy link for port `7860`. Use that proxy link, not a `0.0.0.0` or `127.0.0.1` link. Keep that cell running while using the UI.
@@ -111,8 +123,10 @@ Colab will show an iframe and print an `Open Wan Studio Web UI:` proxy link for 
 In the Web UI, connect this model folder if it is not detected automatically:
 
 ```text
-/content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW
+/content/drive/MyDrive/WanStudio/models/Wan2.2-TI2V-5B
 ```
+
+Real generation needs a 24 GB+ GPU. If Colab assigns a T4, the UI can open but generation may fail with an out-of-memory error.
 
 ## Runner Modes
 

@@ -17,6 +17,8 @@ from .schemas import GenerationJob, GenerationRequest, GenerationStatus, JobStat
 DEFAULT_REPO_ID = "lkzd7/WAN2.2_LoraSet_NSFW"
 DEFAULT_MODEL_DIR = "models/WAN2.2_LoraSet_NSFW"
 DEFAULT_MODEL_NOTE = "Default download is a Wan2.2 LoRA/adapters set; real Wan inference still needs a compatible Wan2.2 base model runner."
+WAN_BASE_REPO_ID = "Wan-AI/Wan2.2-TI2V-5B"
+WAN_BASE_MODEL_DIR = "models/Wan2.2-TI2V-5B"
 
 
 class ConnectModelInput(BaseModel):
@@ -71,16 +73,19 @@ class WebState:
         self.models_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
 
     def _discover_models(self) -> list[ModelInstall]:
-        candidates = [
-            self.root / DEFAULT_MODEL_DIR,
-            Path(DEFAULT_MODEL_DIR),
-            Path(f"/content/drive/MyDrive/WanStudio/{DEFAULT_MODEL_DIR}"),
+        candidates: list[tuple[str, Path, str]] = [
+            (WAN_BASE_REPO_ID, self.root / WAN_BASE_MODEL_DIR, "huggingface"),
+            (WAN_BASE_REPO_ID, Path(WAN_BASE_MODEL_DIR), "huggingface"),
+            (WAN_BASE_REPO_ID, Path("/content/drive/MyDrive/WanStudio/models/Wan2.2-TI2V-5B"), "huggingface"),
+            (DEFAULT_REPO_ID, self.root / DEFAULT_MODEL_DIR, "huggingface"),
+            (DEFAULT_REPO_ID, Path(DEFAULT_MODEL_DIR), "huggingface"),
+            (DEFAULT_REPO_ID, Path(f"/content/drive/MyDrive/WanStudio/{DEFAULT_MODEL_DIR}"), "huggingface"),
         ]
         discovered: list[ModelInstall] = []
-        for path in candidates:
+        for repo_id, path, source in candidates:
             if not path.exists():
                 continue
-            model = create_model_install(DEFAULT_REPO_ID, str(path), "huggingface")
+            model = create_model_install(repo_id, str(path), source)
             if model.status == "ready":
                 discovered.append(model)
         return discovered
@@ -114,6 +119,7 @@ def create_app(*, root: Path | None = None, runner_kind: str = "fake", wan_repo_
 
     @app.get("/api/state")
     async def get_state() -> dict[str, object]:
+        suggested_real_model_dir = "/content/drive/MyDrive/WanStudio/models/Wan2.2-TI2V-5B" if Path("/content").exists() else str(state.root / WAN_BASE_MODEL_DIR)
         return {
             "root": str(state.root),
             "runner": runner_kind,
@@ -123,6 +129,8 @@ def create_app(*, root: Path | None = None, runner_kind: str = "fake", wan_repo_
             "defaultRepoId": DEFAULT_REPO_ID,
             "defaultModelDir": DEFAULT_MODEL_DIR,
             "defaultModelNote": DEFAULT_MODEL_NOTE,
+            "wanBaseRepoId": WAN_BASE_REPO_ID,
+            "wanBaseModelDir": suggested_real_model_dir,
         }
 
     @app.post("/api/models/connect")
@@ -430,7 +438,9 @@ INDEX_HTML = r"""<!doctype html>
       $("runJob").disabled = ready.length === 0;
       $("readyBanner").textContent = ready.length
         ? "Ready to prompt! A connected folder is available in this Web UI."
-        : "Connect a ready Wan-compatible folder first.";
+        : state.runner === "wan"
+          ? "Real Wan runner mode. Connect Wan-AI/Wan2.2-TI2V-5B or another compatible base checkpoint folder first."
+          : "Connect a ready Wan-compatible folder first.";
     }
 
     function renderJobs() {
@@ -458,6 +468,13 @@ INDEX_HTML = r"""<!doctype html>
       state.models = payload.models || [];
       state.jobs = payload.jobs || [];
       $("runnerBadge").textContent = `${state.runner} runner · ${state.root}`;
+      if (state.runner === "wan") {
+        if ($("repoId").value === payload.defaultRepoId) $("repoId").value = payload.wanBaseRepoId || "Wan-AI/Wan2.2-TI2V-5B";
+        if ($("modelPath").value.includes("WAN2.2_LoraSet_NSFW")) $("modelPath").value = payload.wanBaseModelDir || "models/Wan2.2-TI2V-5B";
+        if ($("size").value === "832x480") $("size").value = "1280x704";
+        if ($("steps").value === "18") $("steps").value = "24";
+        $("readyBanner").textContent = "Real Wan runner mode. Connect Wan-AI/Wan2.2-TI2V-5B or another compatible base checkpoint folder.";
+      }
       renderModels();
       renderJobs();
     }

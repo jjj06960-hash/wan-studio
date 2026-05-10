@@ -47,8 +47,9 @@ class SubprocessWanRunner:
             return status_for(request.id, JobState.FAILED, 0, error="Model path is required for the Wan runner")
 
         output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"{request.id}.mp4"
         before = {path.resolve() for path in self.wan_repo_dir.rglob("*.mp4")}
-        command = build_wan_generate_command(request, self.wan_repo_dir)
+        command = build_wan_generate_command(request, self.wan_repo_dir, save_file=output_path)
         if progress:
             await progress(status_for(request.id, JobState.RUNNING, 5))
 
@@ -72,6 +73,10 @@ class SubprocessWanRunner:
         if progress:
             await progress(status_for(request.id, JobState.RUNNING, 92))
 
+        (output_dir / f"{request.id}.log").write_text("\n".join(output_lines), encoding="utf-8")
+        if output_path.exists():
+            return status_for(request.id, JobState.SUCCEEDED, 100, output_path=output_path)
+
         candidates = sorted(
             [path for path in self.wan_repo_dir.rglob("*.mp4") if path.resolve() not in before],
             key=lambda path: path.stat().st_mtime,
@@ -81,13 +86,11 @@ class SubprocessWanRunner:
         if not candidates:
             return status_for(request.id, JobState.FAILED, 0, error="Wan finished but no MP4 output was found")
 
-        output_path = output_dir / f"{request.id}.mp4"
         shutil.copy2(candidates[-1], output_path)
-        (output_dir / f"{request.id}.log").write_text("\n".join(output_lines), encoding="utf-8")
         return status_for(request.id, JobState.SUCCEEDED, 100, output_path=output_path)
 
 
-def build_wan_generate_command(request: GenerationRequest, wan_repo_dir: Path) -> list[str]:
+def build_wan_generate_command(request: GenerationRequest, wan_repo_dir: Path, *, save_file: Path | None = None) -> list[str]:
     """Builds the official Wan generate.py command shape without executing it."""
     command = [
         "python",
@@ -102,8 +105,12 @@ def build_wan_generate_command(request: GenerationRequest, wan_repo_dir: Path) -
         request.prompt,
         "--sample_steps",
         str(request.steps),
+        "--base_seed",
+        str(request.seed),
         "--convert_model_dtype",
     ]
+    if save_file:
+        command.extend(["--save_file", str(save_file)])
     if request.image:
         command.extend(["--image", request.image])
     if request.offload_model:
