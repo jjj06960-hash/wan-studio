@@ -70,6 +70,8 @@ class GenerationRequest(WanBaseModel):
     steps: int = 18
     offload_model: bool = True
     t5_cpu: bool = True
+    lora_paths: list[str] = Field(default_factory=list)
+    lora_scale: float = 1.0
     runtime: RuntimeKind = RuntimeKind.LOCAL
     task: WanTask = WanTask.T2V
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

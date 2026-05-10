@@ -42,13 +42,13 @@ pip install -U "huggingface_hub[cli]"
 hf download lkzd7/WAN2.2_LoraSet_NSFW --local-dir ./models/WAN2.2_LoraSet_NSFW
 ```
 
-Then open the Web UI and connect:
+Then open the Web UI and connect it as a LoRA/adapters folder, not as the base model:
 
 ```text
 models/WAN2.2_LoraSet_NSFW
 ```
 
-Important: this repo is handled as a Wan2.2 LoRA/adapters set. For real generation with the Wan subprocess runner, you still need a compatible Wan2.2 base model/official Wan checkout that knows how to use that adapter set. The fake runner is enough to test the app flow without a GPU.
+Important: this repo is handled as a Wan2.2 LoRA/adapters set. For real generation with the Wan subprocess runner, connect a compatible Wan2.2 base checkpoint first, then use the Prompt panel's `LoRA adapter folder or file` field to scan and attach one `.safetensors` adapter file. Many files in this set target Wan2.2 A14B/high-low noise models, so they will fail clearly if attached to an incompatible 5B base model.
 
 ## Custom Wan Folder
 
@@ -74,9 +74,9 @@ Use this when the local machine has no suitable GPU.
 !python install.py --accelerator cuda --system
 ```
 
-### 2. Mount Drive and download the real base model once
+### 2. Mount Drive and download the real base model and LoRA set once
 
-Store the real Wan2.2 base model in Drive so you do not download it every time the Colab runtime resets. The default LoRA/adapters repo is useful for future adapter support, but it is not enough for video generation by itself.
+Store the real Wan2.2 base model and optional LoRA set in Drive so you do not download them every time the Colab runtime resets. The LoRA/adapters repo is not enough for video generation by itself.
 
 ```python
 from google.colab import drive
@@ -86,18 +86,26 @@ drive.mount('/content/drive')
 
 BASE_REPO_ID = 'Wan-AI/Wan2.2-TI2V-5B'
 BASE_MODEL_DIR = Path('/content/drive/MyDrive/WanStudio/models/Wan2.2-TI2V-5B')
+LORA_REPO_ID = 'lkzd7/WAN2.2_LoraSet_NSFW'
+LORA_MODEL_DIR = Path('/content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW')
 WEIGHT_SUFFIXES = {'.safetensors', '.bin', '.pt', '.pth', '.ckpt'}
 
 !pip install -U "huggingface_hub[cli]"
 
-has_weights = BASE_MODEL_DIR.exists() and any(
-    path.suffix in WEIGHT_SUFFIXES for path in BASE_MODEL_DIR.rglob('*') if path.is_file()
-)
+def has_weights(model_dir):
+    return model_dir.exists() and any(
+        path.suffix in WEIGHT_SUFFIXES for path in model_dir.rglob('*') if path.is_file()
+    )
 
-if has_weights:
+if has_weights(BASE_MODEL_DIR):
     print('Base model already exists in Drive:', BASE_MODEL_DIR)
 else:
     !hf download {BASE_REPO_ID} --local-dir {BASE_MODEL_DIR}
+
+if has_weights(LORA_MODEL_DIR):
+    print('LoRA set already exists in Drive:', LORA_MODEL_DIR)
+else:
+    !hf download {LORA_REPO_ID} --local-dir {LORA_MODEL_DIR}
 ```
 
 ### 3. Install the official Wan runner
@@ -124,6 +132,12 @@ In the Web UI, connect this model folder if it is not detected automatically:
 
 ```text
 /content/drive/MyDrive/WanStudio/models/Wan2.2-TI2V-5B
+```
+
+To attach the optional LoRA set, paste this folder in `LoRA adapter folder or file`, click `Scan LoRA files`, then select one adapter file:
+
+```text
+/content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW
 ```
 
 Real generation needs a 24 GB+ GPU. If Colab assigns a T4, the UI can open but generation may fail with an out-of-memory error.

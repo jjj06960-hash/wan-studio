@@ -6,8 +6,9 @@ Wan Studio v1 supports Wan-family models first.
 
 - `lkzd7/WAN2.2_LoraSet_NSFW`
 - Type: Wan2.2 LoRA/adapters set
-- Purpose: default Hugging Face download target for the MVP Web UI
-- Real inference note: pair with a compatible Wan2.2 base model runner
+- Purpose: default optional adapter download target for the MVP Web UI
+- Real inference note: pair one selected `.safetensors` file with a compatible Wan2.2 base model runner
+- Compatibility note: many adapter files in this repo are A14B high/low-noise LoRAs and will not apply to the TI2V-5B base model
 
 ## Optimized base-model preset
 
@@ -27,3 +28,12 @@ Users can connect a local folder for Wan2.1, Wan2.2, and Wan-derived checkpoints
 - `animate`: character animation/replacement
 
 Wan-derived models without a known optimization profile start with the safe low-VRAM preset.
+
+## LoRA adapter loading
+
+The Web UI exposes a LoRA adapter layer in the Prompt panel:
+
+- Paste a `.safetensors` file path directly, or paste a folder and click `Scan LoRA files`.
+- Select one adapter file before running a job.
+- For Wan2.2 A14B models, LOW/HIGH adapter filenames are routed to the low-noise and high-noise models when both are supplied through the API.
+- Shape mismatches fail the job with a compatibility message instead of silently producing a broken output.

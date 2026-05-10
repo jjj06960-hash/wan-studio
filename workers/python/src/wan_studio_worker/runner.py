@@ -92,9 +92,7 @@ class SubprocessWanRunner:
 
 def build_wan_generate_command(request: GenerationRequest, wan_repo_dir: Path, *, save_file: Path | None = None) -> list[str]:
     """Builds the official Wan generate.py command shape without executing it."""
-    command = [
-        "python",
-        str(wan_repo_dir / "generate.py"),
+    generate_args = [
         "--task",
         request.task.value if request.task.value != "ti2v" else "ti2v-5B",
         "--size",
@@ -110,14 +108,30 @@ def build_wan_generate_command(request: GenerationRequest, wan_repo_dir: Path, *
         "--convert_model_dtype",
     ]
     if save_file:
-        command.extend(["--save_file", str(save_file)])
+        generate_args.extend(["--save_file", str(save_file)])
     if request.image:
-        command.extend(["--image", request.image])
+        generate_args.extend(["--image", request.image])
     if request.offload_model:
-        command.extend(["--offload_model", "True"])
+        generate_args.extend(["--offload_model", "True"])
     if request.t5_cpu:
-        command.append("--t5_cpu")
-    return command
+        generate_args.append("--t5_cpu")
+
+    if request.lora_paths:
+        command = [
+            "python",
+            "-m",
+            "wan_studio_worker.wan_lora_generate",
+            "--wan_repo_dir",
+            str(wan_repo_dir),
+            "--lora_scale",
+            str(request.lora_scale),
+        ]
+        for path in request.lora_paths:
+            command.extend(["--lora_path", path])
+        command.extend(generate_args)
+        return command
+
+    return ["python", str(wan_repo_dir / "generate.py"), *generate_args]
 
 
 def write_status(path: Path, status: GenerationStatus) -> None:

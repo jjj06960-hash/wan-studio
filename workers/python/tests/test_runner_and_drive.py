@@ -38,6 +38,33 @@ def test_build_wan_command_shape() -> None:
     assert "/outputs/test.mp4" in command
 
 
+def test_build_wan_command_with_lora_uses_loader_wrapper() -> None:
+    request = GenerationRequest(
+        prompt="A mountain at dawn",
+        model_id="custom-wan",
+        model_path="/models/Wan2.2-I2V-A14B",
+        size="1280x704",
+        steps=24,
+        task=WanTask.I2V,
+        lora_paths=["/models/WAN2.2_LoraSet_NSFW/example_high.safetensors"],
+        lora_scale=0.75,
+    )
+
+    command = build_wan_generate_command(request, Path("/opt/Wan2.2"), save_file=Path("/outputs/test.mp4"))
+
+    assert command[:3] == ["python", "-m", "wan_studio_worker.wan_lora_generate"]
+    assert "--wan_repo_dir" in command
+    assert "/opt/Wan2.2" in command
+    assert "--lora_path" in command
+    assert "/models/WAN2.2_LoraSet_NSFW/example_high.safetensors" in command
+    assert "--lora_scale" in command
+    assert "0.75" in command
+    assert "--ckpt_dir" in command
+    assert "/models/Wan2.2-I2V-A14B" in command
+    assert "--save_file" in command
+    assert "/outputs/test.mp4" in command
+
+
 def test_drive_worker_processes_camel_case_job(tmp_path: Path) -> None:
     jobs_dir, results_dir, status_dir = ensure_drive_tree(tmp_path)
     request = GenerationRequest(

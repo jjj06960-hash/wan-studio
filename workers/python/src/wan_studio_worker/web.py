@@ -7,11 +7,12 @@ from typing import Literal
 
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, HTMLResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from .model_registry import build_hf_command, build_modelscope_command, create_model_install
 from .runner import FakeWanRunner, SubprocessWanRunner, WanRunner
 from .schemas import GenerationJob, GenerationRequest, GenerationStatus, JobState, ModelInstall, RuntimeKind, WanTask, status_for
+from .wan_lora_generate import LORA_SUFFIXES
 
 
 DEFAULT_REPO_ID = "lkzd7/WAN2.2_LoraSet_NSFW"
@@ -37,6 +38,8 @@ class CreateJobInput(BaseModel):
     offload_model: bool = True
     t5_cpu: bool = True
     seed: int = 0
+    lora_paths: list[str] = Field(default_factory=list)
+    lora_scale: float = 1.0
 
 
 class WebState:
@@ -120,6 +123,7 @@ def create_app(*, root: Path | None = None, runner_kind: str = "fake", wan_repo_
     @app.get("/api/state")
     async def get_state() -> dict[str, object]:
         suggested_real_model_dir = "/content/drive/MyDrive/WanStudio/models/Wan2.2-TI2V-5B" if Path("/content").exists() else str(state.root / WAN_BASE_MODEL_DIR)
+        suggested_lora_dir = f"/content/drive/MyDrive/WanStudio/{DEFAULT_MODEL_DIR}" if Path("/content").exists() else str(state.root / DEFAULT_MODEL_DIR)
         return {
             "root": str(state.root),
             "runner": runner_kind,
@@ -131,7 +135,20 @@ def create_app(*, root: Path | None = None, runner_kind: str = "fake", wan_repo_
             "defaultModelNote": DEFAULT_MODEL_NOTE,
             "wanBaseRepoId": WAN_BASE_REPO_ID,
             "wanBaseModelDir": suggested_real_model_dir,
+            "defaultLoraRepoId": DEFAULT_REPO_ID,
+            "defaultLoraModelDir": suggested_lora_dir,
         }
+
+    @app.get("/api/loras")
+    async def list_loras(path: str | None = None) -> dict[str, object]:
+        root = Path(path or state.root / DEFAULT_MODEL_DIR).expanduser()
+        if not root.exists():
+            return {"loras": []}
+        if root.is_file():
+            loras = [root] if root.suffix.lower() in LORA_SUFFIXES else []
+        else:
+            loras = sorted(item for item in root.rglob("*") if item.is_file() and item.suffix.lower() in LORA_SUFFIXES)
+        return {"loras": [str(item) for item in loras[:200]], "truncated": len(loras) > 200}
 
     @app.post("/api/models/connect")
     async def connect_model(data: ConnectModelInput) -> dict[str, object]:
@@ -155,6 +172,8 @@ def create_app(*, root: Path | None = None, runner_kind: str = "fake", wan_repo_
             steps=data.steps,
             offload_model=data.offload_model,
             t5_cpu=data.t5_cpu,
+            lora_paths=data.lora_paths,
+            lora_scale=data.lora_scale,
             runtime=RuntimeKind.LOCAL,
             task=data.task,
         )
@@ -300,6 +319,21 @@ INDEX_HTML = r"""<!doctype html>
     .wide { grid-column: 1 / -1; }
     .notice { padding: 12px 14px; border: 1px solid #d8e9e5; border-radius: 10px; background: #f0faf7; color: var(--accent-strong); font-size: 13px; line-height: 1.45; font-weight: 760; }
     .error { color: var(--danger); font-size: 12px; line-height: 1.45; font-weight: 760; }
+    .loading-layer {
+      position: fixed; inset: 0; z-index: 20; display: none; place-items: center;
+      background: rgba(238, 242, 245, 0.68); backdrop-filter: blur(7px);
+    }
+    .loading-layer.active { display: grid; }
+    .loading-box {
+      width: min(360px, calc(100vw - 36px)); padding: 18px; border: 1px solid rgba(198, 210, 219, 0.9);
+      border-radius: 12px; background: rgba(255,255,255,0.94); box-shadow: var(--shadow);
+    }
+    .spinner {
+      width: 28px; height: 28px; border-radius: 999px; border: 3px solid #d8e9e5;
+      border-top-color: var(--accent); animation: spin 0.86s linear infinite; margin-bottom: 12px;
+    }
+    .loading-box strong { display: block; font-size: 14px; margin-bottom: 4px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
     @media (max-width: 980px) {
       .shell { grid-template-columns: 1fr; }
       .sidebar { border-right: 0; border-bottom: 1px solid var(--border); }
@@ -308,6 +342,13 @@ INDEX_HTML = r"""<!doctype html>
   </style>
 </head>
 <body>
+  <div class="loading-layer" id="loadingLayer" aria-live="polite" aria-busy="true">
+    <div class="loading-box">
+      <div class="spinner"></div>
+      <strong id="loadingTitle">Working</strong>
+      <p class="muted" id="loadingText">Please keep this tab open.</p>
+    </div>
+  </div>
   <main class="shell">
     <aside class="sidebar">
       <div class="brand"><div class="mark">W</div><div><strong>Wan Studio</strong><span>Installable Web UI</span></div></div>
@@ -375,6 +416,18 @@ INDEX_HTML = r"""<!doctype html>
             <label>Image reference path
               <input id="imagePath" placeholder="/path/to/reference.png" />
             </label>
+            <label>LoRA adapter folder or file
+              <input id="loraPath" placeholder="/content/drive/MyDrive/WanStudio/models/WAN2.2_LoraSet_NSFW or a .safetensors file" />
+            </label>
+            <div class="row">
+              <label>LoRA file
+                <select id="loraSelect"><option value="">No LoRA layer</option></select>
+              </label>
+              <label>LoRA scale
+                <input id="loraScale" type="number" min="0" max="2" step="0.05" value="1" />
+              </label>
+            </div>
+            <button class="button secondary" id="scanLoras">Scan LoRA files</button>
             <div class="row">
               <label>Steps
                 <input id="steps" type="number" min="1" max="80" value="18" />
@@ -403,6 +456,21 @@ INDEX_HTML = r"""<!doctype html>
     const $ = (id) => document.getElementById(id);
     const appBase = () => new URL(".", window.location.href);
     const appUrl = (path) => new URL(path.replace(/^\/+/, ""), appBase()).toString();
+
+    function setBusy(active, title = "Working", text = "Please keep this tab open.") {
+      $("loadingTitle").textContent = title;
+      $("loadingText").textContent = text;
+      $("loadingLayer").classList.toggle("active", active);
+    }
+
+    async function withBusy(title, text, task) {
+      setBusy(true, title, text);
+      try {
+        return await task();
+      } finally {
+        setBusy(false);
+      }
+    }
 
     async function api(path, options = {}) {
       const res = await fetch(appUrl(path), { headers: { "content-type": "application/json" }, ...options });
@@ -449,10 +517,11 @@ INDEX_HTML = r"""<!doctype html>
         const outputName = status.outputPath ? status.outputPath.split("/").pop() : "";
         const output = outputName && status.state === "succeeded" ? `<p><a href="${appUrl("outputs/" + outputName)}" target="_blank">${status.outputPath}</a></p>` : "";
         const error = status.error ? `<p class="error">${status.error}</p>` : "";
+        const loras = job.request.loraPaths?.length ? ` · LoRA ${job.request.loraPaths.length}` : "";
         return `<article class="card-row">
           <div>
             <h3>${job.request.prompt}</h3>
-            <p>${job.request.modelId} · ${job.request.task} · ${job.request.size}</p>
+            <p>${job.request.modelId} · ${job.request.task} · ${job.request.size}${loras}</p>
             <div class="progress"><span style="width:${status.progress}%"></span></div>
             ${output}${error}
           </div>
@@ -471,6 +540,7 @@ INDEX_HTML = r"""<!doctype html>
       if (state.runner === "wan") {
         if ($("repoId").value === payload.defaultRepoId) $("repoId").value = payload.wanBaseRepoId || "Wan-AI/Wan2.2-TI2V-5B";
         if ($("modelPath").value.includes("WAN2.2_LoraSet_NSFW")) $("modelPath").value = payload.wanBaseModelDir || "models/Wan2.2-TI2V-5B";
+        if (!$("loraPath").value) $("loraPath").value = payload.defaultLoraModelDir || "";
         if ($("size").value === "832x480") $("size").value = "1280x704";
         if ($("steps").value === "18") $("steps").value = "24";
         $("readyBanner").textContent = "Real Wan runner mode. Connect Wan-AI/Wan2.2-TI2V-5B or another compatible base checkpoint folder.";
@@ -480,32 +550,58 @@ INDEX_HTML = r"""<!doctype html>
     }
 
     async function connectModel() {
-      $("modelMessage").textContent = "Checking model folder...";
-      const payload = await api("api/models/connect", {
-        method: "POST",
-        body: JSON.stringify({ repo_id: $("repoId").value, local_path: $("modelPath").value, source: $("source").value })
-      });
+      const payload = await withBusy("Checking model", "Validating the selected Wan folder.", () => api("api/models/connect", {
+          method: "POST",
+          body: JSON.stringify({ repo_id: $("repoId").value, local_path: $("modelPath").value, source: $("source").value })
+        })
+      );
       $("modelMessage").textContent = `Connected: ${payload.model.displayName} (${payload.model.status})`;
       await loadState();
     }
 
+    function selectedLoraPaths() {
+      const selected = $("loraSelect").value;
+      const rawPath = $("loraPath").value.trim();
+      if (selected) return [selected];
+      if (rawPath.match(/\.(safetensors|pt|pth|ckpt)$/i)) return [rawPath];
+      return [];
+    }
+
+    async function scanLoras() {
+      const rawPath = $("loraPath").value.trim();
+      const payload = await withBusy("Scanning LoRA files", "Reading adapter files from the selected folder.", () => api(`api/loras?path=${encodeURIComponent(rawPath)}`));
+      const loras = payload.loras || [];
+      $("loraSelect").innerHTML = loras.length
+        ? [`<option value="">No LoRA layer</option>`, ...loras.map((path) => `<option value="${path}">${path.split("/").pop()}</option>`)].join("")
+        : `<option value="">No LoRA files found</option>`;
+      $("jobMessage").textContent = loras.length
+        ? `Found ${loras.length} LoRA file(s). Pick one before running if you want an adapter layer.`
+        : "No LoRA files found at that path.";
+    }
+
     async function runJob() {
       $("jobMessage").textContent = "Queueing job...";
-      await api("api/jobs", {
-        method: "POST",
-        body: JSON.stringify({
-          prompt: $("promptText").value,
-          model_id: $("modelSelect").value,
-          task: $("task").value,
-          image: $("imagePath").value,
-          size: $("size").value,
-          steps: Number($("steps").value),
-          seed: Number($("seed").value),
-          offload_model: true,
-          t5_cpu: true
+      const loraPaths = selectedLoraPaths();
+      await withBusy("Queueing generation", loraPaths.length ? "Attaching the selected LoRA layer to this job." : "Sending the prompt to the runner.", () => api("api/jobs", {
+          method: "POST",
+          body: JSON.stringify({
+            prompt: $("promptText").value,
+            model_id: $("modelSelect").value,
+            task: $("task").value,
+            image: $("imagePath").value,
+            size: $("size").value,
+            steps: Number($("steps").value),
+            seed: Number($("seed").value),
+            offload_model: true,
+            t5_cpu: true,
+            lora_paths: loraPaths,
+            lora_scale: Number($("loraScale").value) || 1
+          })
         })
-      });
-      $("jobMessage").textContent = "Job queued.";
+      );
+      $("jobMessage").textContent = loraPaths.length
+        ? "Job queued with LoRA layer. Watch the Jobs panel for compatibility errors or output."
+        : "Job queued.";
       await refreshJobs();
     }
 
@@ -517,6 +613,7 @@ INDEX_HTML = r"""<!doctype html>
 
     ["source", "repoId", "modelPath"].forEach((id) => $(id).addEventListener("input", renderModels));
     $("connectModel").addEventListener("click", () => connectModel().catch((error) => $("modelMessage").textContent = error.message));
+    $("scanLoras").addEventListener("click", () => scanLoras().catch((error) => $("jobMessage").textContent = error.message));
     $("runJob").addEventListener("click", () => runJob().catch((error) => $("jobMessage").textContent = error.message));
     $("refreshJobs").addEventListener("click", () => refreshJobs());
     setInterval(() => refreshJobs().catch(() => {}), 1800);
